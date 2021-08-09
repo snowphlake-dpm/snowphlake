@@ -1,14 +1,13 @@
-# *=========================================================================
-# *
-# *  Copyright Amsterdam UMC and contributors
-# *
-# *  Licensed under the GNU GENERAL PUBLIC LICENSE Version 3;
-# *  you may not use this file except in compliance with the License.
-# *
-# *  Unless required by applicable law or agreed to in writing, software
-# *  distributed under the License is distributed on an "AS IS" BASIS,
-# *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# *  See the License for the specific language governing permissions and
-# *  limitations under the License.
-# *
-# *=========================================================================*/
+# Author: Vikram Venkatraghavan, Amsterdam UMC
+
+# Ordering for subtypes
+# timeline for subtypes
+# 1D biomarker distributions --> uncertainty with bootstrapping 
+# tSNE for high dimensional biomarkers ?
+
+# Staging + timeline -> normal 
+# Kdes --> boostrapping uncertainty
+# Staging + timeline --> atypicality
+# Heterogeneity --> inter vs intra subtype
+# Subtypes distribution
+# individual patient 
