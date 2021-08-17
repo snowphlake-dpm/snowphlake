@@ -177,7 +177,7 @@ class dirichlet_process():
                         muA = pm.Normal("muA_"+self.biomarker_labels[i], self.cases[i]['mu'][0,0],
                                     sigma=np.std(data_corrected[~idx_cn,i])*0.5)
                         stdA = pm.Uniform("stdA_"+self.biomarker_labels[i],
-                                    self.cases[i]['std'][0,0],np.std(data_corrected[~idx_cn,i]))
+                                    0,np.std(data_corrected[~idx_cn,i]))
                         ind_logp = pm.NormalMixture.dist(tt.stack([mixing[i],1-mixing[i]]), 
                                 mu = tt.stack([muA,self.controls[i]['mu'][0]]),
                                 sd = tt.stack([stdA,self.controls[i]['std'][0]])).logp(data_corrected[~idx_cn,i])
