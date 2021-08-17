@@ -177,6 +177,8 @@ class dirichlet_process():
             return
 
         def cases_model_init(self, data_corrected, idx_cn): 
+            import pymc3 as pm 
+            from theano import tensor as tt
             ## this works only for n_gaussians = 1 
             for i in range(N):
                 self.DP_cases[0][i]["model"] = pm.Model() 
