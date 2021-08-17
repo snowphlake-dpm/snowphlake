@@ -177,6 +177,7 @@ class dirichlet_process():
             return
 
         def cases_model_init(self, data_corrected, idx_cn): 
+            
             import pymc3 as pm 
             from theano import tensor as tt
             ## this works only for n_gaussians = 1 
@@ -186,7 +187,7 @@ class dirichlet_process():
                     muA = pm.Normal("mu_", 
                             self.cases[i]['mu'][0,0], sigma=np.std(data_corrected[~idx_cn,i])*0.5)
                     stdA = pm.Uniform("std_",
-                            self.cases[i]['std'][0,0],np.std(data_corrected[~idx_cn,i]))     
+                            0,np.std(data_corrected[~idx_cn,i]))     
                     dist = pm.NormalMixture("dist",tt.stack([self.mixing[i,0],1-self.mixing[i,0]]), 
                                 mu = tt.stack([muA,self.controls[i]['mu'][0]]),
                                 sd = tt.stack([stdA,self.controls[i]['std'][0]]), observed = data_corrected[~idx_cn,i])
@@ -210,7 +211,7 @@ class dirichlet_process():
                 
                 cases_model_init(self, data_corrected, idx_cn) 
                 for i in range(N):
-                    print("Optimizing case distribution for biomarker:", self.biomarker_labels)
+                    print("Optimizing case distribution for biomarker:", self.biomarker_labels[i])
                     with self.DP_cases[0][i]["model"]:
                         self.DP_cases[0][i]["trace"] = pm.sample(self.niter_trace, tune=self.niter_tunein, chains=2, 
                         cores=2*multiprocessing.cpu_count(), init="advi", target_accept=0.9,
