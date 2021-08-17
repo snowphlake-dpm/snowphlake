@@ -147,6 +147,8 @@ class dirichlet_process():
         def subtyping_model_init(self,data_corrected,idx_cn):
             import pymc3 as pm 
             from theano import tensor as tt
+            
+            self.DP_subtyping["model"] = pm.Model()
             if self.n_maxsubtypes > 1:
                 with self.DP_subtyping["model"]:
                     alphaS = pm.Gamma("alphaS", 1.0, 1.0)
@@ -181,10 +183,10 @@ class dirichlet_process():
             from theano import tensor as tt
 
             N = data_corrected.shape[1]
-            self.DP_subtyping["model"] = pm.Model()
             flag_opt_stop=0
             cnt =0 
             while flag_opt_stop==0:
+                cnt = cnt+1
                 # Alternating mcmc optimization for subtyping+mixing, and distribution for cases 
                 subtyping_model_init(self,data_corrected,idx_cn)
                 with self.DP_subtyping["model"]:
@@ -192,6 +194,7 @@ class dirichlet_process():
                         cores=2*multiprocessing.cpu_count(), init="advi", target_accept=0.9,
                         random_seed=self.random_seed, return_inferencedata=False)
                 #cases_model_init(self, data_corrected, idx_cn)
+                flag_opt_stop=1
 
             if self.n_maxsubtypes>1:
                 self.mixing[:,:] = self.DP_subtyping["trace"]["mixing"].mean(axis=0)
