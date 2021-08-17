@@ -145,6 +145,8 @@ class dirichlet_process():
             return
 
         def subtyping_model_init(self,data_corrected,idx_cn):
+            import pymc3 as pm 
+            from theano import tensor as tt
             if self.n_maxsubtypes > 1:
                 with self.DP_subtyping["model"]:
                     alphaS = pm.Gamma("alphaS", 1.0, 1.0)
