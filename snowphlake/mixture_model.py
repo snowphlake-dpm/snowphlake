@@ -13,7 +13,8 @@ import multiprocessing
 class dirichlet_process():
 
     def __init__(self, N, biomarker_labels, n_gaussians=1, n_maxsubtypes=1,
-                    random_seed=42, estimate_mixing="mcmc", niter_tunein= 4000, niter_trace=1000):
+                    random_seed=42, estimate_mixing="mcmc", niter_tunein= 4000,
+                    niter_trace=1000, optim_thresh = 0.05):
         # N is the number of events in the model.
 
         self.n_gaussians = n_gaussians
@@ -26,6 +27,7 @@ class dirichlet_process():
         self.biomarker_labels = biomarker_labels
         self.niter_tunein = niter_tunein
         self.niter_trace = niter_trace
+        self.optim_thresh = optim_thresh
 
         self.controls = [{"mu":np.zeros(self.n_gaussians) ,"std":np.zeros(self.n_gaussians), 
                         "weights": np.zeros(self.n_gaussians)+1/n_gaussians} for x in range(N)]
@@ -105,7 +107,7 @@ class dirichlet_process():
                     self.mixing[i,0] = res.x
 
                 
-                if np.mean(np.abs(self.mixing[:,0]-mixing0[:,0])) < 0.01: 
+                if np.mean(np.abs(self.mixing[:,0]-mixing0[:,0])) < self.optim_thresh: 
                     flag_opt_stop=1
                     break 
 
@@ -214,9 +216,9 @@ class dirichlet_process():
 
                 self.mixing[:,0] = self.DP_subtyping["trace"]["mixing"].mean(axis=0)
                 
-                print ("mixing diff:", np.abs(self.mixing[:,0]-mixing0[:,0]))
+                print ("mixing diff:", np.mean(np.abs(self.mixing[:,0]-mixing0[:,0])) )
 
-                if np.mean(np.abs(self.mixing[:,0]-mixing0[:,0])) < 0.01:
+                if np.mean(np.abs(self.mixing[:,0]-mixing0[:,0])) < self.optim_thresh:
                     flag_opt_stop=1
 
                 cases_model_init(self, data_corrected, idx_cn) 
