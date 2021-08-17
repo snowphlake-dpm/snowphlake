@@ -16,7 +16,10 @@ setuptools.setup(
       'pandas',
       'scikit-learn',
       'scipy',
-      'tqdm'
+      'tqdm',
+      'pyebm',
+      'pymc3',
+      'theano'
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
