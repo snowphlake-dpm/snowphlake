@@ -202,13 +202,23 @@ class dirichlet_process():
             cnt =0 
             while flag_opt_stop==0:
                 cnt = cnt+1
+                mixing0 = np.copy(self.mixing)
+                if cnt==1:
+                    mixing_init = np.copy(mixing0)
                 # Alternating mcmc optimization for subtyping+mixing, and distribution for cases 
                 subtyping_model_init(self,data_corrected,idx_cn)
                 with self.DP_subtyping["model"]:
                     self.DP_subtyping["trace"] = pm.sample(self.niter_trace, tune=self.niter_tunein, chains=2, 
                         cores=2*multiprocessing.cpu_count(), init="advi", target_accept=0.9,
                         random_seed=self.random_seed, return_inferencedata=False)
+
+                self.mixing[:,:] = self.DP_subtyping["trace"]["mixing"].mean(axis=0)
                 
+                print ("mixing diff:", np.abs(self.mixing[:,0]-mixing0[:,0]))
+
+                if np.mean(np.abs(self.mixing[:,0]-mixing0[:,0])) < 0.01:
+                    flag_opt_stop=1
+
                 cases_model_init(self, data_corrected, idx_cn) 
                 for i in range(N):
                     print("Optimizing case distribution for biomarker:", self.biomarker_labels[i])
@@ -216,23 +226,20 @@ class dirichlet_process():
                         self.DP_cases[0][i]["trace"] = pm.sample(self.niter_trace, tune=self.niter_tunein, chains=2, 
                         cores=2*multiprocessing.cpu_count(), init="advi", target_accept=0.9,
                         random_seed=self.random_seed, return_inferencedata=False)
-                flag_opt_stop=1
-
-            if self.n_maxsubtypes>1:
-                self.mixing[:,:] = self.DP_subtyping["trace"]["mixing"].mean(axis=0)
-                for i in range(N):
-                    for kk in range(self.n_maxsubtypes):
-                        self.cases[i]['std'][0,kk] = \
-                            self.DP_subtyping["trace"]["stdA_"+self.biomarker_labels[i]+'_subtype'+str(kk)].mean(axis=0)
-                        self.cases[i]['mu'][0,kk] = \
-                            self.DP_subtyping["trace"]["muA_"+self.biomarker_labels[i]+'_subtype'+str(kk)].mean(axis=0)
-            else:
-                self.mixing[:,0] = self.DP_subtyping["trace"]["mixing"].mean(axis=0)
-                for i in range(N):
-                    self.cases[i]['std'][0,0] = \
-                        self.DP_cases[0][i]["trace"]["std_"].mean(axis=0)
-                    self.cases[i]['mu'][0,0] = \
-                        self.DP_cases[0][i]["trace"]["mu_"].mean(axis=0)
+                
+                if self.n_maxsubtypes>1:
+                    for i in range(N):
+                        for kk in range(self.n_maxsubtypes):
+                            self.cases[i]['std'][0,kk] = \
+                                self.DP_subtyping["trace"]["stdA_"+self.biomarker_labels[i]+'_subtype'+str(kk)].mean(axis=0)
+                            self.cases[i]['mu'][0,kk] = \
+                                self.DP_subtyping["trace"]["muA_"+self.biomarker_labels[i]+'_subtype'+str(kk)].mean(axis=0)
+                else:
+                    for i in range(N):
+                        self.cases[i]['std'][0,0] = \
+                            self.DP_cases[0][i]["trace"]["std_"].mean(axis=0)
+                        self.cases[i]['mu'][0,0] = \
+                            self.DP_cases[0][i]["trace"]["mu_"].mean(axis=0)
             
             return 
 
