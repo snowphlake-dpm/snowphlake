@@ -13,7 +13,8 @@ class timeline():
 
     def __init__(self,confounding_factors=None, 
                     diagnostic_labels=None, estimate_uncertainty=False, bootstrap_repetitions=100,
-                    random_seed=42, n_gaussians = 1, n_maxsubtypes = 1):
+                    random_seed=42, n_gaussians = 1, n_maxsubtypes = 1, estimate_mixing='debm-2019',
+                    niter_tunein = 4000, niter_trace=1000):
 
         self.confounding_factors = confounding_factors
         self.diagnostic_labels = diagnostic_labels 
@@ -22,7 +23,20 @@ class timeline():
         self.n_gaussians = n_gaussians
         self.n_maxsubtypes = n_maxsubtypes
         self.bootstrap_repetitions = bootstrap_repetitions
-
+        if self.n_maxsubtypes == 1:
+            self.estimate_mixing =  estimate_mixing 
+            # debm-2019 method option uses the alternating optimization technique 
+            # as described in the original DEBM Neuroimage 2019 paper. 
+        else: 
+            self.estimate_mixing = 'mcmc' 
+            # this is the only method option for subtyping
+        if self.estimate_mixing == 'mcmc':
+            self.niter_tunein = niter_tunein
+            self.niter_trace = niter_trace
+        else:
+            self.niter_tunein = None
+            self.niter_trace = None
+        
         self.confounding_factors_model = None 
         self.mixture_model = None 
         self.sequence_model = {'ordering': None, 'event_centers': None}
@@ -47,11 +61,13 @@ class timeline():
                 data_corrected = cf.predict(data)
             else:
                 data_corrected = data 
+            
             start = time.process_time()
-            dp = mixture_model.dirichlet_process(data_corrected.shape[1],self.n_gaussians, 
-                        self.n_maxsubtypes, self.random_seed )
+            dp = mixture_model.dirichlet_process(data_corrected.shape[1], biomarker_labels,
+                        self.n_gaussians, self.n_maxsubtypes, self.random_seed,self.estimate_mixing,
+                        self.niter_tunein, self.niter_trace)
             dp.fit(data_corrected,diagnosis)
-            print(time.process_time() - start)
+            print('Time elapsed = ',time.process_time() - start)
 
             p_yes=dp.predict_posterior(data_corrected[diagnosis!=1,:])
             from pyebm.central_ordering import generalized_mallows as gm
@@ -79,8 +95,6 @@ class timeline():
 
         return
     
-
-
     def predict_severity(self, data):
 
         utils.checkifestimated(self)
