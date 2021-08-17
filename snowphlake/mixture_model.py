@@ -33,8 +33,10 @@ class dirichlet_process():
                     "std":np.zeros((self.n_gaussians,self.n_maxsubtypes)), 
                         "weights": np.zeros((self.n_gaussians,self.n_maxsubtypes)) + 1/n_gaussians} for x in range(N)] 
         self.mixing = np.zeros((N,self.n_maxsubtypes)) + 0.5
-        self.DPmm_controls = None # for sklearn DPGMM when n_gaussians > 1
+        self.DP_controls = [{"model":None, "trace":None, "biomarker": None} for x in range(N)]
         self.DP_subtyping = {"model":None, "trace":None} # for pymc3 Dirichlet process mixutures when n_maxsubtypes > 1
+        self.DP_cases = [[{"model":None, "trace":None, "biomarker": None} for x in range(N)] \
+                                for y in range(self.n_maxsubtypes)]
     
     def fit(self, data_corrected, diagnosis):
         
@@ -142,14 +144,7 @@ class dirichlet_process():
                     # if GMM fails, revert to initialized values
             return
 
-        def mcmc(self, data_corrected, idx_cn):
-            
-            import pymc3 as pm 
-            from theano import tensor as tt
-
-            N = data_corrected.shape[1]
-            self.DP_subtyping["model"] = pm.Model()
-
+        def subtyping_model_init(self,data_corrected,idx_cn):
             if self.n_maxsubtypes > 1:
                 with self.DP_subtyping["model"]:
                     alphaS = pm.Gamma("alphaS", 1.0, 1.0)
@@ -159,13 +154,9 @@ class dirichlet_process():
                     for kk in range(self.n_maxsubtypes):
                         comp_logps_row = []
                         for i in range(N):
-                            muA = pm.Normal("muA_"+self.biomarker_labels[i]+'_subtype'+str(kk), 
-                                    self.cases[i]['mu'][0,0], sigma=np.std(data_corrected[~idx_cn,i])*0.5)
-                            stdA = pm.Uniform("stdA_"+self.biomarker_labels[i]+'_subtype'+str(kk),
-                                    self.cases[i]['std'][0,0],np.std(data_corrected[~idx_cn,i]))
                             ind_logps = pm.NormalMixture.dist(tt.stack([mixing[i,kk],1-mixing[i,kk]]),
-                                mu = tt.stack([muA,self.controls[i]['mu'][0]]),
-                                sd = tt.stack([stdA,self.controls[i]['std'][0]])).logp(data_corrected[~idx_cn,i])
+                                    mu = tt.stack([self.cases[i]['mu'][0,0],self.controls[i]['mu'][0]]),
+                                    sd = tt.stack([self.cases[i]['std'][0,0],self.controls[i]['std'][0]])).logp(data_corrected[~idx_cn,i])
                             comp_logps_row.append(ind_logps.sum())
                         comp_logps.append(comp_logps_row)
                     total_logp = pm.Potential('subtype_mixture', obj_subtyping(subtypes, comp_logps, mixing))
@@ -174,21 +165,32 @@ class dirichlet_process():
                     total_logp = 0
                     mixing = pm.Uniform("mixing", 0.05, 0.95, shape=N)
                     for i in range(N):
-                        muA = pm.Normal("muA_"+self.biomarker_labels[i], self.cases[i]['mu'][0,0],
-                                    sigma=np.std(data_corrected[~idx_cn,i])*0.5)
-                        stdA = pm.Uniform("stdA_"+self.biomarker_labels[i],
-                                    0,np.std(data_corrected[~idx_cn,i]))
                         ind_logp = pm.NormalMixture.dist(tt.stack([mixing[i],1-mixing[i]]), 
-                                mu = tt.stack([muA,self.controls[i]['mu'][0]]),
-                                sd = tt.stack([stdA,self.controls[i]['std'][0]])).logp(data_corrected[~idx_cn,i])
+                                    mu = tt.stack([self.cases[i]['mu'][0,0],self.controls[i]['mu'][0]]),
+                                    sd = tt.stack([self.cases[i]['std'][0,0],self.controls[i]['std'][0]])).logp(data_corrected[~idx_cn,i])
                         total_logp = total_logp - pm.Potential("logp_"+self.biomarker_labels[i], ind_logp.sum())
-                
-            with self.DP_subtyping["model"]:
 
-                self.DP_subtyping["trace"] = pm.sample(self.niter_trace, tune=self.niter_tunein, chains=2, 
-                    cores=2*multiprocessing.cpu_count(), init="advi", target_accept=0.9,
-                    random_seed=self.random_seed, return_inferencedata=False)
+            return
                 
+
+        def mcmc(self, data_corrected, idx_cn):
+            
+            import pymc3 as pm 
+            from theano import tensor as tt
+
+            N = data_corrected.shape[1]
+            self.DP_subtyping["model"] = pm.Model()
+            flag_opt_stop=0
+            cnt =0 
+            while flag_opt_stop==0:
+                # Alternating mcmc optimization for subtyping+mixing, and distribution for cases 
+                subtyping_model_init(self,data_corrected,idx_cn)
+                with self.DP_subtyping["model"]:
+                    self.DP_subtyping["trace"] = pm.sample(self.niter_trace, tune=self.niter_tunein, chains=2, 
+                        cores=2*multiprocessing.cpu_count(), init="advi", target_accept=0.9,
+                        random_seed=self.random_seed, return_inferencedata=False)
+                #cases_model_init(self, data_corrected, idx_cn)
+
             if self.n_maxsubtypes>1:
                 self.mixing[:,:] = self.DP_subtyping["trace"]["mixing"].mean(axis=0)
                 for i in range(N):
@@ -199,11 +201,11 @@ class dirichlet_process():
                             self.DP_subtyping["trace"]["muA_"+self.biomarker_labels[i]+'_subtype'+str(kk)].mean(axis=0)
             else:
                 self.mixing[:,0] = self.DP_subtyping["trace"]["mixing"].mean(axis=0)
-                for i in range(N):
-                    self.cases[i]['std'][0,0] = \
-                        self.DP_subtyping["trace"]["stdA_"+self.biomarker_labels[i]].mean(axis=0)
-                    self.cases[i]['mu'][0,0] = \
-                        self.DP_subtyping["trace"]["muA_"+self.biomarker_labels[i]].mean(axis=0)
+                #for i in range(N):
+                #    self.cases[i]['std'][0,0] = \
+                #        self.DP_subtyping["trace"]["stdA_"+self.biomarker_labels[i]].mean(axis=0)
+                #    self.cases[i]['mu'][0,0] = \
+                #        self.DP_subtyping["trace"]["muA_"+self.biomarker_labels[i]].mean(axis=0)
             
             return 
 
@@ -226,9 +228,10 @@ class dirichlet_process():
                 stats.norm.fit(data_corrected[idx_cases,i][~idx_reject])
         
         # Optimization
-        debm2019(self, data_corrected, idx_cn)
         if self.estimate_mixing=='mcmc':
             mcmc(self, data_corrected, idx_cn)
+        else:
+            debm2019(self, data_corrected, idx_cn)
         return 
     
     def predict_posterior(self,data_corrected):
