@@ -185,7 +185,7 @@ class dirichlet_process():
                 
             with self.DP_subtyping["model"]:
 
-                self.DP_subtyping["trace"] = pm.sample(self.niter_trace, tune=self.niter_tune, chains=2, 
+                self.DP_subtyping["trace"] = pm.sample(self.niter_trace, tune=self.niter_tunein, chains=2, 
                     cores=2*multiprocessing.cpu_count(), init="advi", target_accept=0.9,
                     random_seed=self.random_seed, return_inferencedata=False)
                 
