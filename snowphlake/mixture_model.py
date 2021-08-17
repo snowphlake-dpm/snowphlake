@@ -226,9 +226,8 @@ class dirichlet_process():
                 stats.norm.fit(data_corrected[idx_cases,i][~idx_reject])
         
         # Optimization
-        if self.estimate_mixing=='debm-2019':
-            debm2019(self, data_corrected, idx_cn)
-        else:
+        debm2019(self, data_corrected, idx_cn)
+        if self.estimate_mixing=='mcmc':
             mcmc(self, data_corrected, idx_cn)
         return 
     

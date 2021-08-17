@@ -62,12 +62,10 @@ class timeline():
             else:
                 data_corrected = data 
             
-            start = time.process_time()
             dp = mixture_model.dirichlet_process(data_corrected.shape[1], biomarker_labels,
                         self.n_gaussians, self.n_maxsubtypes, self.random_seed,self.estimate_mixing,
                         self.niter_tunein, self.niter_trace)
             dp.fit(data_corrected,diagnosis)
-            print('Time elapsed = ',time.process_time() - start)
 
             p_yes=dp.predict_posterior(data_corrected[diagnosis!=1,:])
             from pyebm.central_ordering import generalized_mallows as gm
