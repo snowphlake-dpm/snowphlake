@@ -147,7 +147,7 @@ class dirichlet_process():
         def subtyping_model_init(self,data_corrected,idx_cn):
             import pymc3 as pm 
             from theano import tensor as tt
-            
+
             self.DP_subtyping["model"] = pm.Model()
             if self.n_maxsubtypes > 1:
                 with self.DP_subtyping["model"]:
@@ -175,7 +175,19 @@ class dirichlet_process():
                         total_logp = total_logp - pm.Potential("logp_"+self.biomarker_labels[i], ind_logp.sum())
 
             return
-                
+
+        def cases_model_init(self, data_corrected, idx_cn): 
+            ## this works only for n_gaussians = 1 
+            for i in range(N):
+                self.DP_cases[0][i]["model"] = pm.Model() 
+                with self.DP_cases[0][i]["model"]:
+                    muA = pm.Normal("mu_", 
+                            self.cases[i]['mu'][0,0], sigma=np.std(data_corrected[~idx_cn,i])*0.5)
+                    stdA = pm.Uniform("std_",
+                            self.cases[i]['std'][0,0],np.std(data_corrected[~idx_cn,i]))     
+                    dist = pm.NormalMixture("dist",tt.stack([self.mixing[i,0],1-self.mixing[i,0]]), 
+                                mu = tt.stack([muA,self.controls[i]['mu'][0]]),
+                                sd = tt.stack([stdA,self.controls[i]['std'][0]]), observed = data_corrected[~idx_cn,i])
 
         def mcmc(self, data_corrected, idx_cn):
             
@@ -193,7 +205,14 @@ class dirichlet_process():
                     self.DP_subtyping["trace"] = pm.sample(self.niter_trace, tune=self.niter_tunein, chains=2, 
                         cores=2*multiprocessing.cpu_count(), init="advi", target_accept=0.9,
                         random_seed=self.random_seed, return_inferencedata=False)
-                #cases_model_init(self, data_corrected, idx_cn)
+                
+                cases_model_init(self, data_corrected, idx_cn) 
+                for i in range(N):
+                    print("Optimizing case distribution for biomarker:", self.biomarker_labels)
+                    with self.DP_cases[0][i]["model"]:
+                        self.DP_cases[0][i]["trace"] = pm.sample(self.niter_trace, tune=self.niter_tunein, chains=2, 
+                        cores=2*multiprocessing.cpu_count(), init="advi", target_accept=0.9,
+                        random_seed=self.random_seed, return_inferencedata=False)
                 flag_opt_stop=1
 
             if self.n_maxsubtypes>1:
@@ -206,11 +225,11 @@ class dirichlet_process():
                             self.DP_subtyping["trace"]["muA_"+self.biomarker_labels[i]+'_subtype'+str(kk)].mean(axis=0)
             else:
                 self.mixing[:,0] = self.DP_subtyping["trace"]["mixing"].mean(axis=0)
-                #for i in range(N):
-                #    self.cases[i]['std'][0,0] = \
-                #        self.DP_subtyping["trace"]["stdA_"+self.biomarker_labels[i]].mean(axis=0)
-                #    self.cases[i]['mu'][0,0] = \
-                #        self.DP_subtyping["trace"]["muA_"+self.biomarker_labels[i]].mean(axis=0)
+                for i in range(N):
+                    self.cases[i]['std'][0,0] = \
+                        self.DP_cases[0][i]["trace"]["std_"].mean(axis=0)
+                    self.cases[i]['mu'][0,0] = \
+                        self.DP_cases[0][i]["trace"]["mu_"].mean(axis=0)
             
             return 
 
