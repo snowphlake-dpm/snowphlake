@@ -212,7 +212,7 @@ class dirichlet_process():
                         cores=2*multiprocessing.cpu_count(), init="advi", target_accept=0.9,
                         random_seed=self.random_seed, return_inferencedata=False)
 
-                self.mixing[:,:] = self.DP_subtyping["trace"]["mixing"].mean(axis=0)
+                self.mixing[:,0] = self.DP_subtyping["trace"]["mixing"].mean(axis=0)
                 
                 print ("mixing diff:", np.abs(self.mixing[:,0]-mixing0[:,0]))
 
