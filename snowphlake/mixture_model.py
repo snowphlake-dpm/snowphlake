@@ -186,8 +186,9 @@ class dirichlet_process():
                         diff_mu = np.abs(self.cases[i]['mu'][0,0] - self.controls[i]['mu'][0])
                         muA = pm.Normal("muA_"+self.biomarker_labels[i],
                                 mu=self.cases[i]['mu'][0,0],sd = diff_mu/3)
-                        stdA = pm.Uniform("stdA_"+self.biomarker_labels[i],
-                                    self.cases[i]['std'][0,0],np.std(data_corrected[~idx_cn,i]))
+                        diff_std = np.abs(np.std(data_corrected[~idx_cn,i]) - self.cases[i]['std'][0,0])
+                        stdA = pm.Normal("stdA_"+self.biomarker_labels[i],
+                                    mu=self.cases[i]['std'][0,0],sd = diff_std / 3)
                         ind_logp = pm.NormalMixture.dist(tt.stack([mixing[i],1-mixing[i]]), 
                                 mu = tt.stack([muA,self.controls[i]['mu'][0]]),
                                 sd = tt.stack([stdA,self.controls[i]['std'][0]])).logp(data_corrected[~idx_cn,i])
