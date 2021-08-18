@@ -234,6 +234,7 @@ class dirichlet_process():
                     self.mixing[:,:] = self.DP_subtyping["trace"]["mixing"].mean(axis=0)
                 
                 print ("mixing diff:", np.mean(np.abs(self.mixing[:,:]-mixing0[:,:])) )
+                print (self.mixing)
 
                 if np.mean(np.abs(self.mixing[:,:]-mixing0[:,:])) < self.optim_thresh:
                     flag_opt_stop=1
