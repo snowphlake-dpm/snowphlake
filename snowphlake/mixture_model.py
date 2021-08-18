@@ -240,12 +240,13 @@ class dirichlet_process():
                     break
 
                 cases_model_init(self, data_corrected, idx_cn) 
-                for i in range(N):
-                    print("Optimizing case distribution for biomarker:", self.biomarker_labels[i])
-                    with self.DP_cases[0][i]["model"]:
-                        self.DP_cases[0][i]["trace"] = pm.sample(self.niter_trace, tune=self.niter_tunein, chains=2, 
-                        cores=2*multiprocessing.cpu_count(), init="advi", target_accept=0.9,
-                        random_seed=self.random_seed, return_inferencedata=False)
+                for k in range(self.n_maxsubtypes):
+                    for i in range(N):
+                        print("Optimizing case distribution for biomarker:", self.biomarker_labels[i])
+                        with self.DP_cases[k][i]["model"]:
+                            self.DP_cases[k][i]["trace"] = pm.sample(self.niter_trace, tune=self.niter_tunein, chains=2, 
+                            cores=2*multiprocessing.cpu_count(), init="advi", target_accept=0.9,
+                            random_seed=self.random_seed, return_inferencedata=False)
                 
                 if self.n_maxsubtypes>1:
                     for i in range(N):
