@@ -83,9 +83,11 @@ class dirichlet_process():
 
             return objfun 
         
-        def debm2019(self, data_corrected, idx_cn):
+        def debm2019(self, data_corrected, diagnosis):
             
             N = data_corrected.shape[1]
+            idx_cn = diagnosis == 1 
+            idx_cases = diagnosis == np.nanmax(diagnosis)
             flag_opt_stop=0
             cnt = 0
             while flag_opt_stop==0:
@@ -142,10 +144,13 @@ class dirichlet_process():
                     # if GMM fails, revert to initialized values
             return
 
-        def mcmc(self, data_corrected, idx_cn):
+        def mcmc(self, data_corrected, diagnosis):
             
             import pymc3 as pm 
             from theano import tensor as tt
+
+            idx_cn = diagnosis==1
+            idx_cases = diagnosis==np.nanmax(diagnosis)
 
             N = data_corrected.shape[1]
             self.DP_subtyping["model"] = pm.Model()
@@ -159,9 +164,9 @@ class dirichlet_process():
                     for kk in range(self.n_maxsubtypes):
                         comp_logps_row = []
                         for i in range(N):
-                            lower_bound = np.min([np.nanmin(data_corrected[idx_cases,i],
+                            lower_bound = np.min([np.nanmin(data_corrected[idx_cases,i]),
                                             self.controls[i]['mu'][0]])
-                            upper_bound = np.max([np.nanmax(data_corrected[idx_cases,i],
+                            upper_bound = np.max([np.nanmax(data_corrected[idx_cases,i]),
                                             self.controls[i]['mu'][0]])
                             muA = pm.Uniform("muA_"+self.biomarker_labels[i]+'_subtype'+str(kk), 
                                     lower_bound, upper_bound)
@@ -178,9 +183,9 @@ class dirichlet_process():
                     total_logp = 0
                     mixing = pm.Uniform("mixing", 0.05, 0.95, shape=N)
                     for i in range(N):
-                        lower_bound = np.min([np.nanmin(data_corrected[idx_cases,i],
+                        lower_bound = np.min([np.nanmin(data_corrected[idx_cases,i]),
                                         self.controls[i]['mu'][0]])
-                        upper_bound = np.max([np.nanmax(data_corrected[idx_cases,i],
+                        upper_bound = np.max([np.nanmax(data_corrected[idx_cases,i]),
                                         self.controls[i]['mu'][0]])
                         muA = pm.Uniform("muA_"+self.biomarker_labels[i],
                                 lower_bound,upper_bound)
@@ -234,9 +239,9 @@ class dirichlet_process():
                 stats.norm.fit(data_corrected[idx_cases,i][~idx_reject])
         
         # Optimization
-        debm2019(self, data_corrected, idx_cn)
+        debm2019(self, data_corrected, diagnosis)
         if self.estimate_mixing=='mcmc':
-            mcmc(self, data_corrected, idx_cn)
+            mcmc(self, data_corrected, diagnosis)
         return 
     
     def predict_posterior(self,data_corrected):
