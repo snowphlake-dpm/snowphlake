@@ -203,9 +203,15 @@ class dirichlet_process():
                 for k in range(self.n_maxsubtypes):
                     self.DP_cases[k][i]["model"] = pm.Model() 
                     with self.DP_cases[k][i]["model"]:
-                        diff_mu = np.abs(self.cases[i]['mu'][0,k] - self.controls[i]['mu'][0])
-                        muA = pm.Normal("mu_", 
-                                mu=self.cases[i]['mu'][0,k], sd = diff_mu/3)
+                        #diff_mu = np.abs(self.cases[i]['mu'][0,k] - self.controls[i]['mu'][0])
+                        #muA = pm.Normal("mu_", 
+                        #        mu=self.cases[i]['mu'][0,k], sd = diff_mu/3)
+                        lower_bound = np.min([np.nanmin(data_corrected[idx_cases,i]),
+                                        self.controls[i]['mu'][0]])
+                        upper_bound = np.max([np.nanmax(data_corrected[idx_cases,i]),
+                                        self.controls[i]['mu'][0]])
+                        muA = pm.Uniform("muA_"+self.biomarker_labels[i],
+                                lower_bound,upper_bound)
                         stdA = pm.Uniform("std_",
                                 0,np.std(data_corrected[~idx_cn,i]))     
                         dist = pm.NormalMixture("dist",tt.stack([self.mixing[i,k],1-self.mixing[i,k]]), 
