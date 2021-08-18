@@ -239,9 +239,10 @@ class dirichlet_process():
                 stats.norm.fit(data_corrected[idx_cases,i][~idx_reject])
         
         # Optimization
-        debm2019(self, data_corrected, diagnosis)
         if self.estimate_mixing=='mcmc':
             mcmc(self, data_corrected, diagnosis)
+        else:
+            debm2019(self, data_corrected, diagnosis)
         return 
     
     def predict_posterior(self,data_corrected):
