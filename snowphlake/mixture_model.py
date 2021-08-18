@@ -146,6 +146,8 @@ class dirichlet_process():
             return
 
         def obj_subtyping(subtypes, comp_logps, mixing):
+            import pymc3 as pm 
+            from theano import tensor as tt
             n_maxsubtypes = len(comp_logps)
             comp_logp_k=[]
             for k in range(n_maxsubtypes):
