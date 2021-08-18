@@ -183,14 +183,11 @@ class dirichlet_process():
                     total_logp = 0
                     mixing = pm.Uniform("mixing", 0.05, 0.95, shape=N)
                     for i in range(N):
-                        lower_bound = np.min([np.nanmin(data_corrected[idx_cases,i]),
-                                        self.controls[i]['mu'][0]])
-                        upper_bound = np.max([np.nanmax(data_corrected[idx_cases,i]),
-                                        self.controls[i]['mu'][0]])
-                        muA = pm.Uniform("muA_"+self.biomarker_labels[i],
-                                lower_bound,upper_bound)
+                        diff_mu = np.abs(self.cases[i]['mu'][0,0] - self.controls[i]['mu'][0])
+                        muA = pm.Normal("muA_"+self.biomarker_labels[i],
+                                mu=self.cases[i]['mu'][0,0],sd = diff_mu/3)
                         stdA = pm.Uniform("stdA_"+self.biomarker_labels[i],
-                                    0,np.std(data_corrected[~idx_cn,i]))
+                                    self.cases[i]['std'][0,0],np.std(data_corrected[~idx_cn,i]))
                         ind_logp = pm.NormalMixture.dist(tt.stack([mixing[i],1-mixing[i]]), 
                                 mu = tt.stack([muA,self.controls[i]['mu'][0]]),
                                 sd = tt.stack([stdA,self.controls[i]['std'][0]])).logp(data_corrected[~idx_cn,i])
