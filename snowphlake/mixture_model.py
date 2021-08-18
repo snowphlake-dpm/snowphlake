@@ -16,7 +16,6 @@ class dirichlet_process():
                     random_seed=42, estimate_mixing="mcmc", niter_tunein= 4000,
                     niter_trace=1000, optim_thresh = 0.05):
         # N is the number of events in the model.
-
         self.n_gaussians = n_gaussians
         self.n_maxsubtypes = n_maxsubtypes
         self.random_seed = random_seed
@@ -146,6 +145,18 @@ class dirichlet_process():
                     # if GMM fails, revert to initialized values
             return
 
+        def obj_subtyping(subtypes, comp_logps, mixing):
+            n_maxsubtypes = len(comp_logps)
+            comp_logp_k=[]
+            for k in range(n_maxsubtypes):
+                total_comp_logp = 0
+                N = len(comp_logps[k])
+                for i in range(N):
+                    total_comp_logp = total_comp_logp + (1)*(comp_logps[k][i])
+                comp_logp_k.append(total_comp_logp)
+            comp_logp = tt.stack(comp_logp_k)
+            return pm.math.logsumexp(tt.log(subtypes) + comp_logp, axis=-1)
+
         def subtyping_model_init(self,data_corrected,idx_cn):
             import pymc3 as pm 
             from theano import tensor as tt
@@ -157,12 +168,12 @@ class dirichlet_process():
                     subtypes = pm.Dirichlet("subtypes", a=np.zeros(self.n_maxsubtypes)+alphaS, shape=self.n_maxsubtypes)
                     mixing = pm.Uniform("mixing", 0.05, 0.95, shape=(N,self.n_maxsubtypes))
                     comp_logps = []
-                    for kk in range(self.n_maxsubtypes):
+                    for k in range(self.n_maxsubtypes):
                         comp_logps_row = []
                         for i in range(N):
-                            ind_logps = pm.NormalMixture.dist(tt.stack([mixing[i,kk],1-mixing[i,kk]]),
-                                    mu = tt.stack([self.cases[i]['mu'][0,0],self.controls[i]['mu'][0]]),
-                                    sd = tt.stack([self.cases[i]['std'][0,0],self.controls[i]['std'][0]])).logp(data_corrected[~idx_cn,i])
+                            ind_logps = pm.NormalMixture.dist(tt.stack([mixing[i,k],1-mixing[i,k]]),
+                                    mu = tt.stack([self.cases[i]['mu'][0,k],self.controls[i]['mu'][0]]),
+                                    sd = tt.stack([self.cases[i]['std'][0,k],self.controls[i]['std'][0]])).logp(data_corrected[~idx_cn,i])
                             comp_logps_row.append(ind_logps.sum())
                         comp_logps.append(comp_logps_row)
                     total_logp = pm.Potential('subtype_mixture', obj_subtyping(subtypes, comp_logps, mixing))
@@ -184,15 +195,16 @@ class dirichlet_process():
             from theano import tensor as tt
             ## this works only for n_gaussians = 1 
             for i in range(N):
-                self.DP_cases[0][i]["model"] = pm.Model() 
-                with self.DP_cases[0][i]["model"]:
-                    muA = pm.Normal("mu_", 
-                            self.cases[i]['mu'][0,0], sigma=np.std(data_corrected[~idx_cn,i])*0.5)
-                    stdA = pm.Uniform("std_",
-                            0,np.std(data_corrected[~idx_cn,i]))     
-                    dist = pm.NormalMixture("dist",tt.stack([self.mixing[i,0],1-self.mixing[i,0]]), 
-                                mu = tt.stack([muA,self.controls[i]['mu'][0]]),
-                                sd = tt.stack([stdA,self.controls[i]['std'][0]]), observed = data_corrected[~idx_cn,i])
+                for k in range(self.n_maxsubtypes):
+                    self.DP_cases[k][i]["model"] = pm.Model() 
+                    with self.DP_cases[k][i]["model"]:
+                        muA = pm.Normal("mu_", 
+                                self.cases[i]['mu'][0,k], sigma=np.std(data_corrected[~idx_cn,i])*0.5)
+                        stdA = pm.Uniform("std_",
+                                0,np.std(data_corrected[~idx_cn,i]))     
+                        dist = pm.NormalMixture("dist",tt.stack([self.mixing[i,k],1-self.mixing[i,k]]), 
+                                    mu = tt.stack([muA,self.controls[i]['mu'][0]]),
+                                    sd = tt.stack([stdA,self.controls[i]['std'][0]]), observed = data_corrected[~idx_cn,i])
 
         def mcmc(self, data_corrected, idx_cn):
             
@@ -213,13 +225,17 @@ class dirichlet_process():
                     self.DP_subtyping["trace"] = pm.sample(self.niter_trace, tune=self.niter_tunein, chains=2, 
                         cores=2*multiprocessing.cpu_count(), init="advi", target_accept=0.9,
                         random_seed=self.random_seed, return_inferencedata=False)
-
-                self.mixing[:,0] = self.DP_subtyping["trace"]["mixing"].mean(axis=0)
                 
-                print ("mixing diff:", np.mean(np.abs(self.mixing[:,0]-mixing0[:,0])) )
+                if self.n_maxsubtypes==1:
+                    self.mixing[:,0] = self.DP_subtyping["trace"]["mixing"].mean(axis=0)
+                else:
+                    self.mixing[:,:] = self.DP_subtyping["trace"]["mixing"].mean(axis=0)
+                
+                print ("mixing diff:", np.mean(np.abs(self.mixing[:,:]-mixing0[:,:])) )
 
-                if np.mean(np.abs(self.mixing[:,0]-mixing0[:,0])) < self.optim_thresh:
+                if np.mean(np.abs(self.mixing[:,:]-mixing0[:,:])) < self.optim_thresh:
                     flag_opt_stop=1
+                    break
 
                 cases_model_init(self, data_corrected, idx_cn) 
                 for i in range(N):
@@ -231,11 +247,11 @@ class dirichlet_process():
                 
                 if self.n_maxsubtypes>1:
                     for i in range(N):
-                        for kk in range(self.n_maxsubtypes):
-                            self.cases[i]['std'][0,kk] = \
-                                self.DP_subtyping["trace"]["stdA_"+self.biomarker_labels[i]+'_subtype'+str(kk)].mean(axis=0)
-                            self.cases[i]['mu'][0,kk] = \
-                                self.DP_subtyping["trace"]["muA_"+self.biomarker_labels[i]+'_subtype'+str(kk)].mean(axis=0)
+                        for k in range(self.n_maxsubtypes):
+                            self.cases[i]['std'][0,k] = \
+                                self.DP_cases[k][i]["trace"]["std_"].mean(axis=0)
+                            self.cases[i]['mu'][0,k] = \
+                                self.DP_cases[k][i]["trace"]["mu_"].mean(axis=0)
                 else:
                     for i in range(N):
                         self.cases[i]['std'][0,0] = \
@@ -250,7 +266,8 @@ class dirichlet_process():
         for i in range(N):
             # Initial Fit
             self.controls[i]['mu'][0],self.controls[i]['std'][0]=stats.norm.fit(data_corrected[idx_cn,i])
-            self.cases[i]['mu'][0,0], self.cases[i]['std'][0,0]=stats.norm.fit(data_corrected[idx_cases,i])
+            for k in range(self.n_maxsubtypes):
+                self.cases[i]['mu'][0,k], self.cases[i]['std'][0,k]=stats.norm.fit(data_corrected[idx_cases,i])
             
             # Reject overlapping regions 
             likeli_norm = stats.norm.pdf(data_corrected[idx_cases,i], 
@@ -260,8 +277,9 @@ class dirichlet_process():
             idx_reject = likeli_norm > likeli_abnorm
 
             # Truncated Fit --> make this for multiple gaussians
-            self.cases[i]['mu'][0,0], self.cases[i]['std'][0,0]= \
-                stats.norm.fit(data_corrected[idx_cases,i][~idx_reject])
+            for k in range(self.n_maxsubtypes):
+                self.cases[i]['mu'][0,k], self.cases[i]['std'][0,k]= \
+                    stats.norm.fit(data_corrected[idx_cases,i][~idx_reject])
         
         # Optimization
         if self.estimate_mixing=='mcmc':
@@ -273,15 +291,19 @@ class dirichlet_process():
     def predict_posterior(self,data_corrected):
         
         N = data_corrected.shape[1]
-        p_yes = np.zeros((data_corrected.shape[0],N))
+        p_yes_list = []
 
-        for i in range(N):
+        for k in range(self.n_maxsubtypes):
+            p_yes = np.zeros((data_corrected.shape[0],N))
 
-            wlikeli_norm = (1-self.mixing[i])*stats.norm.pdf(data_corrected[:,i], 
-                loc = self.controls[i]['mu'][0], scale = self.controls[i]['std'][0])
-            wlikeli_abnorm = (self.mixing[i])*stats.norm.pdf(data_corrected[:,i], 
-                loc = self.cases[i]['mu'][0,0], scale = self.cases[i]['std'][0,0])
+            for i in range(N):
 
-            p_yes[:,i] = np.divide(wlikeli_abnorm , (wlikeli_abnorm + wlikeli_norm))
-            
-        return p_yes
+                wlikeli_norm = (1-self.mixing[i,k])*stats.norm.pdf(data_corrected[:,i], 
+                    loc = self.controls[i]['mu'][0], scale = self.controls[i]['std'][0])
+                wlikeli_abnorm = (self.mixing[i,k])*stats.norm.pdf(data_corrected[:,i], 
+                    loc = self.cases[i]['mu'][0,k], scale = self.cases[i]['std'][0,k])
+
+                p_yes[:,i] = np.divide(wlikeli_abnorm , (wlikeli_abnorm + wlikeli_norm))
+            p_yes_list.append(p_yes)
+                
+        return p_yes_list

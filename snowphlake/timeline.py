@@ -67,9 +67,17 @@ class timeline():
                         self.niter_tunein, self.niter_trace)
             dp.fit(data_corrected,diagnosis)
 
-            p_yes=dp.predict_posterior(data_corrected[diagnosis!=1,:])
+            # Change this for multiple subtypes
+            p_yes_list=dp.predict_posterior(data_corrected[diagnosis!=1,:])
             from pyebm.central_ordering import generalized_mallows as gm
-            pi0,event_centers,ih = gm.weighted_mallows.fitMallows(p_yes,1-dp.mixing[:,0])
+            pi0_list=[]
+            event_centers_list=[]
+            
+            for i in range(dp.n_maxsubtypes):
+                p_yes = p_yes_list[i]
+                pi0,event_centers,ih = gm.weighted_mallows.fitMallows(p_yes,1-dp.mixing[:,0])
+                pi0_list.append(pi0)
+                event_centers_list.append(event_centers)
 
             #S = mallows_model()
             #S.fit(p_yes)
