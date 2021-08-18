@@ -33,6 +33,9 @@ class dirichlet_process():
         self.cases = [{"mu":np.zeros((self.n_gaussians,self.n_maxsubtypes)),
                     "std":np.zeros((self.n_gaussians,self.n_maxsubtypes)), 
                         "weights": np.zeros((self.n_gaussians,self.n_maxsubtypes)) + 1/n_gaussians} for x in range(N)] 
+        self.cases_init = [{"mu":np.zeros((self.n_gaussians,self.n_maxsubtypes)),
+                    "std":np.zeros((self.n_gaussians,self.n_maxsubtypes)), 
+                        "weights": np.zeros((self.n_gaussians,self.n_maxsubtypes)) + 1/n_gaussians} for x in range(N)] 
         self.mixing = np.zeros((N,self.n_maxsubtypes)) + 0.5
         self.DP_controls = [{"model":None, "trace":None, "biomarker": None} for x in range(N)]
         self.DP_subtyping = {"model":None, "trace":None} # for pymc3 Dirichlet process mixutures when n_maxsubtypes > 1
@@ -200,8 +203,9 @@ class dirichlet_process():
                 for k in range(self.n_maxsubtypes):
                     self.DP_cases[k][i]["model"] = pm.Model() 
                     with self.DP_cases[k][i]["model"]:
+                        diff_mu = np.abs(self.cases_init[i]['mu'][0,k] - self.controls[i]['mu'][0])
                         muA = pm.Normal("mu_", 
-                                self.cases[i]['mu'][0,k], sigma=np.std(data_corrected[~idx_cn,i])*0.5)
+                                mu=self.cases_init[i]['mu'][0,k], sd = diff_mu/3)
                         stdA = pm.Uniform("std_",
                                 0,np.std(data_corrected[~idx_cn,i]))     
                         dist = pm.NormalMixture("dist",tt.stack([self.mixing[i,k],1-self.mixing[i,k]]), 
@@ -283,6 +287,8 @@ class dirichlet_process():
             # Truncated Fit --> make this for multiple gaussians
             for k in range(self.n_maxsubtypes):
                 self.cases[i]['mu'][0,k], self.cases[i]['std'][0,k]= \
+                    stats.norm.fit(data_corrected[idx_cases,i][~idx_reject])
+                self.cases_init[i]['mu'][0,k], self.cases_init[i]['std'][0,k]= \
                     stats.norm.fit(data_corrected[idx_cases,i][~idx_reject])
         
         # Optimization
