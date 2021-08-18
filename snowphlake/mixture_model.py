@@ -159,8 +159,12 @@ class dirichlet_process():
                     for kk in range(self.n_maxsubtypes):
                         comp_logps_row = []
                         for i in range(N):
-                            muA = pm.Normal("muA_"+self.biomarker_labels[i]+'_subtype'+str(kk), 
-                                    self.cases[i]['mu'][0,0], sigma=np.std(data_corrected[~idx_cn,i])*0.5)
+                            lower_bound = np.min([np.nanmin(data_corrected[idx_cases,i],
+                                            self.controls[i]['mu'][0]])
+                            upper_bound = np.max([np.nanmax(data_corrected[idx_cases,i],
+                                            self.controls[i]['mu'][0]])
+                            muA = pm.Uniform("muA_"+self.biomarker_labels[i]+'_subtype'+str(kk), 
+                                    lower_bound, upper_bound)
                             stdA = pm.Uniform("stdA_"+self.biomarker_labels[i]+'_subtype'+str(kk),
                                     self.cases[i]['std'][0,0],np.std(data_corrected[~idx_cn,i]))
                             ind_logps = pm.NormalMixture.dist(tt.stack([mixing[i,kk],1-mixing[i,kk]]),
@@ -174,8 +178,12 @@ class dirichlet_process():
                     total_logp = 0
                     mixing = pm.Uniform("mixing", 0.05, 0.95, shape=N)
                     for i in range(N):
-                        muA = pm.Normal("muA_"+self.biomarker_labels[i], self.cases[i]['mu'][0,0],
-                                    sigma=np.std(data_corrected[~idx_cn,i])*0.5)
+                        lower_bound = np.min([np.nanmin(data_corrected[idx_cases,i],
+                                        self.controls[i]['mu'][0]])
+                        upper_bound = np.max([np.nanmax(data_corrected[idx_cases,i],
+                                        self.controls[i]['mu'][0]])
+                        muA = pm.Uniform("muA_"+self.biomarker_labels[i],
+                                lower_bound,upper_bound)
                         stdA = pm.Uniform("stdA_"+self.biomarker_labels[i],
                                     0,np.std(data_corrected[~idx_cn,i]))
                         ind_logp = pm.NormalMixture.dist(tt.stack([mixing[i],1-mixing[i]]), 
