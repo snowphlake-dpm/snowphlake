@@ -210,7 +210,7 @@ class dirichlet_process():
                                         self.controls[i]['mu'][0]])
                         upper_bound = np.max([np.nanmax(data_corrected[idx_cases,i]),
                                         self.controls[i]['mu'][0]])
-                        muA = pm.Uniform("mu_"+self.biomarker_labels[i],
+                        muA = pm.Uniform("mu_",
                                 lower_bound,upper_bound)
                         stdA = pm.Uniform("std_",
                                 0,np.std(data_corrected[~idx_cn,i]))     
