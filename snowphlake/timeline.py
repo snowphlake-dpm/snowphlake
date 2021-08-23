@@ -4,17 +4,16 @@ import numpy as np
 import pandas as pd
 import sklearn
 import scipy as sp 
-import snowphlake.mixture_model as mixture_model
+from snowphlake.subtyping import subtype
 import snowphlake.mallows_model as mallows_model
 import snowphlake.utils as utils
 import time 
-
+import warnings
 class timeline():
 
     def __init__(self,confounding_factors=None, 
                     diagnostic_labels=None, estimate_uncertainty=False, bootstrap_repetitions=100,
-                    random_seed=42, n_gaussians = 1, n_maxsubtypes = 1, estimate_mixing='debm-2019',
-                    niter_tunein = 4000, niter_trace=1000):
+                    random_seed=42, n_gaussians = 1, n_maxsubtypes = 1):
 
         self.confounding_factors = confounding_factors
         self.diagnostic_labels = diagnostic_labels 
@@ -23,30 +22,17 @@ class timeline():
         self.n_gaussians = n_gaussians
         self.n_maxsubtypes = n_maxsubtypes
         self.bootstrap_repetitions = bootstrap_repetitions
-        if self.n_maxsubtypes == 1:
-            self.estimate_mixing =  estimate_mixing 
-            # debm-2019 method option uses the alternating optimization technique 
-            # as described in the original DEBM Neuroimage 2019 paper. 
-        else: 
-            self.estimate_mixing = 'mcmc' 
-            # this is the only method option for subtyping
-        if self.estimate_mixing == 'mcmc':
-            self.niter_tunein = niter_tunein
-            self.niter_trace = niter_trace
-        else:
-            self.niter_tunein = None
-            self.niter_trace = None
         
         self.confounding_factors_model = None 
-        self.mixture_model = None 
+        self.subtyping_model = None 
         self.sequence_model = {'ordering': None, 'event_centers': None}
         if self.estimate_uncertainty==True:
-            self.bootstrap_mixture_model = [] 
+            self.bootstrap_subtyping_model = [] 
             self.bootstrap_sequence_model = [{'ordering': None, 
                             'event_centers': None} for x in range(N)] 
     
     def estimate(self, data, diagnosis, biomarker_labels):
-
+        warnings.filterwarnings("ignore")
         def estimate_instance(data, diagnosis, biomarker_labels):
 
             if self.diagnostic_labels is not None:
@@ -62,22 +48,24 @@ class timeline():
             else:
                 data_corrected = data 
             
-            dp = mixture_model.dirichlet_process(data_corrected.shape[1], biomarker_labels,
-                        self.n_gaussians, self.n_maxsubtypes, self.random_seed,self.estimate_mixing,
-                        self.niter_tunein, self.niter_trace)
-            dp.fit(data_corrected,diagnosis)
+            st = subtype(data_corrected.shape[1], biomarker_labels,
+                        self.n_gaussians, self.n_maxsubtypes, self.random_seed)
+            p_yes = st.fit(data_corrected,diagnosis)
 
-            p_yes=dp.predict_posterior(data_corrected[diagnosis!=1,:])
             from pyebm.central_ordering import generalized_mallows as gm
-            pi0,event_centers,ih = gm.weighted_mallows.fitMallows(p_yes,1-dp.mixing[:,0])
-
+            pi0_list = []
+            event_centers_list = []
+            for k in range(self.n_maxsubtypes):
+                pi0,event_centers,ih = gm.weighted_mallows.fitMallows(p_yes[k],1-st.mixing[:,k])
+                pi0_list.append(pi0)
+                event_centers_list.append(event_centers)
             #S = mallows_model()
             #S.fit(p_yes)
 
-            return pi0, event_centers, dp 
+            return pi0_list, event_centers_list, st
 
-        pi0,event_centers, dp = estimate_instance(data, diagnosis, biomarker_labels)
-        self.mixture_model = dp 
+        pi0,event_centers, st = estimate_instance(data, diagnosis, biomarker_labels)
+        self.subtyping_model = st
         self.sequence_model['ordering'] = pi0 
         self.sequence_model['event_centers'] = event_centers
 
@@ -85,9 +73,9 @@ class timeline():
             for i in range(self.bootstrap_repetitions):
                 ## This is not ready yet
                 data_resampled, diagnosis_resampled = utils.resample(data,diagnosis,self.random_seed + i)
-                pi0_resampled,event_centers_resampled, dp_resampled = estimate_instance(data_resampled, diagnosis_resampled, 
+                pi0_resampled,event_centers_resampled, st_resampled = estimate_instance(data_resampled, diagnosis_resampled, 
                                 biomarker_labels)
-                self.bootstrap_mixture_model.append(dp_resampled)
+                self.bootstrap_subtyping_model.append(st_resampled)
                 self.bootstrap_sequence_model[i]['ordering'] = pi0_resampled
                 self.bootstrap_sequence_model[i]['event_centers'] = event_centers_resampled 
 
