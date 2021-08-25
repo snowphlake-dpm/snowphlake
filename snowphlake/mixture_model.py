@@ -10,7 +10,7 @@ import multiprocessing
 
 # Need scipy 1.7.1 or higher
 
-class subtype():
+class mixture_model():
 
     def __init__(self, N, biomarker_labels, n_gaussians=1, n_maxsubtypes=1,
                     random_seed=42):
@@ -28,7 +28,7 @@ class subtype():
                         "weights": np.zeros((self.n_gaussians,self.n_maxsubtypes)) + 1/n_gaussians} for x in range(N)] 
         self.mixing = np.zeros((N,self.n_maxsubtypes)) + 0.5
     
-    def mixture_model(self, data_corrected, diagnosis, p_subtypes):
+    def maximum_likelihood_estimate(self, data_corrected, diagnosis, p_subtypes):
 
         def _calculate_total_likelihood(data, controls, cases, mixing, subtype_ind):
             
@@ -78,7 +78,10 @@ class subtype():
         flag_opt_stop=0
         cnt = 0
         data_noncn = data_corrected[~idx_cn,:]
-        self.mixing[:,:]=0.5
+        #self.mixing[:,:]=0.5
+        if p_subtypes is None:
+            p_subtypes = np.ones((data_noncn.shape[0],self.n_maxsubtypes))
+
         while flag_opt_stop==0:
             cnt = cnt+1
             mixing0 = np.copy(self.mixing)
@@ -86,7 +89,7 @@ class subtype():
                 mixing_init = np.copy(mixing0)
             
             for k in range(self.n_maxsubtypes):
-                idx_select = p_subtypes[:,k]>=0.5
+                idx_select = np.argmax(p_subtypes,axis=1)==k
                 for i in range(N):
                     bnd_mixing = np.asarray([0.05,0.95])
                     bnd_mixing = np.repeat(bnd_mixing[np.newaxis,:],1,axis=0)
@@ -96,16 +99,16 @@ class subtype():
                     self.mixing[i,k] = res.x
             
             if np.mean(np.abs(self.mixing-mixing0)) < 0.01:
-                print('mixing:',np.mean(np.abs(self.mixing-mixing0)))
+                print('mixing convergence check:',np.mean(np.abs(self.mixing-mixing0)))
                 flag_opt_stop=1
                 break 
             else:
-                print('mixing:',np.mean(np.abs(self.mixing-mixing0)))
+                print('mixing convergence check:',np.mean(np.abs(self.mixing-mixing0)))
 
             ## Check for diverging mixing parameter in small datasets  to introduce sanity check
 
             for k in range(self.n_maxsubtypes):
-                idx_select = p_subtypes[:,k]>=0.5
+                idx_select = np.argmax(p_subtypes,axis=1)==k
 
                 for i in range(N):
 
@@ -138,24 +141,12 @@ class subtype():
                     # if GMM fails, revert to initialized values
         return
     
-    def cluster_model(self, p_yes_list, diagnosis, p_subtypes0):
-        ## Change this to clustering based on subject-specific orderings.
-        from sklearn.decomposition import LatentDirichletAllocation as LDA
-        idx_cases = diagnosis == np.nanmax(diagnosis)
-        lda = LDA(self.n_maxsubtypes, random_state = self.random_seed)
-        p_yes_k = np.zeros((p_yes_list[0].shape[0],p_yes_list[0].shape[1],len(p_yes_list)))
-        for k in range(self.n_maxsubtypes):
-            for i in range(p_yes_k.shape[1]):
-                p_yes_k[:,i,k]=np.multiply(p_yes_list[k][:,i], p_subtypes0[:,k])
-        p_yes = np.sum(p_yes_k,axis=2)
-        lda.fit(p_yes[idx_cases,:],diagnosis[idx_cases])
-        p_subtypes = lda.transform(p_yes)
-        return p_subtypes
     
-    def fit(self, data_corrected, diagnosis):
+    def fit(self, data_corrected, diagnosis, p_subtypes=None):
         
         ## First implementation for n_gaussians=1 and n_maxsubtypes=1
         # Truncated Gaussian for initialization 
+
         N = data_corrected.shape[1]
 
         idx_cn = diagnosis == 1 
@@ -177,29 +168,9 @@ class subtype():
                 stats.norm.fit(data_corrected[idx_cases,i][~idx_reject])
         
         # Optimization
-        flag_stop=0
-        cnt = 0
-        p_subtypes = np.zeros((data_corrected[diagnosis!=1,:].shape[0],self.n_maxsubtypes)) + 1/self.n_maxsubtypes
-        while flag_stop==0:
-            cnt = cnt + 1
-            print(cnt)
-            self.mixture_model(data_corrected, diagnosis, p_subtypes)
-            p_yes_list = self.predict_posterior(data_corrected[diagnosis!=1,:])
-            if self.n_maxsubtypes > 1:
-                p_subtypes0 = np.copy(p_subtypes)
-                if cnt == 1:
-                    p_subtypes_init  = p_subtypes0
-                p_subtypes = self.cluster_model(p_yes_list,diagnosis[diagnosis != 1], p_subtypes0)
-                np.save('p_subtypes.npy',[p_subtypes,p_subtypes0])
-                if np.mean(np.abs(p_subtypes - p_subtypes0))< (0.01*self.n_maxsubtypes):
-                    flag_stop=1
-                if cnt == 2:
-                    flag_stop=1
-                else:
-                    print('subtyping:', np.mean(np.abs(p_subtypes - p_subtypes0)))
-            else:
-                flag_stop=1
-
+        self.maximum_likelihood_estimate(data_corrected, diagnosis, p_subtypes)
+        p_yes_list = self.predict_posterior(data_corrected[diagnosis!=1,:])
+        
         return p_yes_list
     
     def predict_posterior(self,data_corrected):
