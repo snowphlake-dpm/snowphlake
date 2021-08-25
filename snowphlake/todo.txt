@@ -1,0 +1,21 @@
+To do list for the software:
+
+hierarchical subtyping: get p_subtypes accurately
+bootstrapping
+model selection with heterogeneity minimization
+patient staging: introduce 2D staging. uncertainties from boostrapping.
+non integer diagnosis
+coinit support
+confounding factors
+visualize functions: Ordering, timeline, 2D patient staging, Gaussian fits with bootstrap uncertainties, Individual test subject info with uncertainties, heterogeneity minimization plot with confidence interval, heterogeneity and subtyping visualization
+missing data support
+generate random dataset for testing 1 gaussian, 1 subtype
+
+To do list for the algorithm: 
+
+mallows model: either switch to C or BayesMallow R library
+mixture model with M gaussians, 1 subtype: add weighted input support for sklearn Bayesian Gaussian Mixture Model
+
+
+
+
