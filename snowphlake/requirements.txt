@@ -2,7 +2,4 @@ numpy
 pandas
 scipy
 scikit-learn
-tqdm
-pymc3
-theano
-pyebm
+matplotlib

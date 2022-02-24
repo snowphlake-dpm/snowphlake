@@ -16,10 +16,7 @@ setuptools.setup(
       'pandas',
       'scikit-learn',
       'scipy',
-      'tqdm',
-      'pyebm',
-      'pymc3',
-      'theano'
+      'matplotlib'
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
