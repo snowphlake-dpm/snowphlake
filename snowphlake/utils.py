@@ -2,6 +2,7 @@
 
 import pandas as pd 
 import numpy as np 
+from sklearn.utils import resample
 
 def set_diagnosis(diagnosis,labels):
 
@@ -24,6 +25,18 @@ class correct_confounding_factors():
         
         return
 
-def resample(data,diagnosis,random_seed):
+def bootstrap_resample(data,diagnosis,subtypes,random_seed):
 
-    return
+    #TODO: Check stratification if diagnosis has nan values 
+
+    if subtypes is not None:
+        data_resampled, diagnosis_resampled, subtypes_resampled = \
+            resample(data,diagnosis,subtypes, random_state = random_seed, \
+                stratify = diagnosis)
+    else:
+        data_resampled, diagnosis_resampled = \
+            resample(data,diagnosis, random_state = random_seed, \
+                stratify = diagnosis)
+        subtypes_resampled = None 
+        
+    return data_resampled, diagnosis_resampled, subtypes_resampled

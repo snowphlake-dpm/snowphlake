@@ -91,8 +91,13 @@ class mixture_model():
                         mixing_init = np.copy(mixing0)
                     bnd_mixing = np.asarray([0.05,0.95])
                     bnd_mixing = np.repeat(bnd_mixing[np.newaxis,:],1,axis=0)
+                    dnc_i = data_noncn[idx_select,i]
+                    idx_notnan = ~np.isnan(dnc_i)
+                    dnc_i = dnc_i[idx_notnan]
+                    pk = p_subtypes[idx_select,k]
+                    pk = pk[idx_notnan]
                     res=optimize.minimize(_objective_mixing,mixing0[i,k],
-                                    args=(data_noncn[idx_select,i],self.cases[i],self.controls[i],p_subtypes[idx_select,k],k),
+                                    args=(dnc_i,self.cases[i],self.controls[i],pk,k),
                                     method='SLSQP', bounds=bnd_mixing)
                     self.mixing[i,k] = res.x
             
@@ -120,9 +125,13 @@ class mixture_model():
                                                 np.nanmax(data_corrected[idx_cases,i])])
 
                 bnd_cases[1,:] = np.asarray([0,np.std(data_corrected[idx_cases,i])])
-
+                dnc_i = data_noncn[idx_select,i]
+                idx_notnan = ~np.isnan(dnc_i)
+                dnc_i = dnc_i[idx_notnan]
+                pk = p_subtypes[idx_select,k]
+                pk = pk[idx_notnan]
                 res=optimize.minimize(_objective_cases_distribution,cases0,
-                            args=(data_noncn[idx_select,i],self.controls[i],self.mixing[i,k], p_subtypes[idx_select,k],k),
+                            args=(dnc_i,self.controls[i],self.mixing[i,k], pk,k),
                             method='SLSQP',bounds=bnd_cases)
                     
                 ## Check this too while introducing subtypes and multiple Gaussians
@@ -157,20 +166,25 @@ class mixture_model():
 
         for i in range(N):
             # Initial Fit
-            self.controls[i]['mu'][0],self.controls[i]['std'][0]=stats.norm.fit(data_corrected[idx_cn,i])
-            self.cases[i]['mu'][0,:], self.cases[i]['std'][0,:]=stats.norm.fit(data_corrected[idx_cases,i])
+            dci_cn = data_corrected[idx_cn,i]
+            dci_cn = dci_cn[~np.isnan(dci_cn)]
+            dci_cases = data_corrected[idx_cases,i]
+            dci_cases = dci_cases[~np.isnan(dci_cases)]
+
+            self.controls[i]['mu'][0],self.controls[i]['std'][0]=stats.norm.fit(dci_cn)
+            self.cases[i]['mu'][0,:], self.cases[i]['std'][0,:]=stats.norm.fit(dci_cases)
             
             # Reject overlapping regions 
-            likeli_norm = stats.norm.pdf(data_corrected[idx_cases,i], 
+            likeli_norm = stats.norm.pdf(dci_cases, 
                 loc = self.controls[i]['mu'][0], scale = self.controls[i]['std'][0])
-            likeli_abnorm = stats.norm.pdf(data_corrected[idx_cases,i], 
+            likeli_abnorm = stats.norm.pdf(dci_cases, 
                 loc = self.cases[i]['mu'][0,0], scale = self.cases[i]['std'][0,0])
             idx_reject = likeli_norm > likeli_abnorm
 
             # Truncated Fit --> make this for multiple gaussians
             self.cases[i]['mu'][0,:], self.cases[i]['std'][0,:]= \
-                stats.norm.fit(data_corrected[idx_cases,i][~idx_reject])
-        
+                stats.norm.fit(dci_cases[~idx_reject])
+
         # Optimization
         self.maximum_likelihood_estimate(data_corrected, diagnosis, p_subtypes)
         p_yes_list = self.predict_posterior(data_corrected[diagnosis!=1,:],p_subtypes)
@@ -180,7 +194,8 @@ class mixture_model():
     def predict_posterior(self,data_corrected,p_subtypes):
         
         N = data_corrected.shape[1]
-        
+        if p_subtypes is None:
+            p_subtypes = np.ones((data_corrected.shape[0],self.n_optsubtypes))
         p_yes_list = []
         for k in range(self.n_optsubtypes):
             idx_select = np.argmax(p_subtypes,axis=1)==k

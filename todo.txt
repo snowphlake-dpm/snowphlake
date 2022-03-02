@@ -1,21 +1,20 @@
-To do list for the software:
+To do list for the algorithm [vikram]:
 
-hierarchical subtyping: get p_subtypes accurately
-bootstrapping
-model selection with heterogeneity minimization
+subtyping: zscore and atypicality
+subtyping model selection 
 patient staging: introduce 2D staging. uncertainties from boostrapping.
-non integer diagnosis
-coinit support
-confounding factors
-visualize functions: Ordering, timeline, 2D patient staging, Gaussian fits with bootstrap uncertainties, Individual test subject info with uncertainties, heterogeneity minimization plot with confidence interval, heterogeneity and subtyping visualization
-missing data support
+confounding factors and / or combat harmonization
+missing data support in subtyping
+mallows model: either switch to C or https://github.com/ekhiru/top-k-mallows
+mixture model with M gaussians, 1 subtype: add weighted input support for sklearn Bayesian Gaussian Mixture Model
 generate random dataset for testing 1 gaussian, 1 subtype
 
-To do list for the algorithm: 
+To do for visualize functions [julia]:
 
-mallows model: either switch to C or BayesMallow R library
-mixture model with M gaussians, 1 subtype: add weighted input support for sklearn Bayesian Gaussian Mixture Model
-
-
-
+event-centers, including multiple subtypes
+patient staging with uncertainty
+Gaussian fits with bootstrap uncertainties
+Individual test subject info with uncertainties
+overview visualization of subtyping 
+overview of multiple subtyping
 
