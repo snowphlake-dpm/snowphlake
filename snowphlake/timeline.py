@@ -13,7 +13,7 @@ class timeline():
                     estimate_uncertainty=False, estimate_subtypes = False, 
                     bootstrap_repetitions=100, n_nmfruns = 30, 
                     subtyping_measure=None, random_seed=42, n_gaussians = 1,
-                    n_maxsubtypes = 1, n_optsubtypes = None):
+                    n_maxsubtypes = 1, n_optsubtypes = None, model_selection = None):
 
         self.confounding_factors = confounding_factors
         self.diagnostic_labels = diagnostic_labels 
@@ -26,15 +26,21 @@ class timeline():
             self.bootstrap_repetitions = 0
         self.estimate_subtypes = estimate_subtypes
         if self.estimate_subtypes == True:
+            self.model_selection = model_selection # crossval, full, or None 
+            if self.model_selection is not None:
+                n_optsubtypes = None 
+            else:
+                if n_optsubtypes is None: 
+                    print('Error: If model_selection is None, specify n_optsubtypes')
             if n_optsubtypes is None:
-                self.n_optsubtypes = -1 # will be set later
+                self.n_optsubtypes = None # will be set later
                 self.n_maxsubtypes = n_maxsubtypes
             else:
                 self.n_optsubtypes = n_optsubtypes
                 self.n_maxsubtypes = n_optsubtypes
         else:
-            self.n_maxsubtypes = -1 # will be set later
-            self.n_optsubtypes = -1 # will be set later
+            self.n_maxsubtypes = None # will be set later
+            self.n_optsubtypes = None # will be set later
         if subtyping_measure is None:
             self.subtyping_measure='zscore'
         else:
@@ -83,13 +89,27 @@ class timeline():
                     self.subtyping_measure == 'zscore'):
                 # Snowphlake with zscore
                 sm = subtyping_model(self.random_seed, self.n_maxsubtypes,
-                    self.n_optsubtypes,self.subtyping_measure, self.model_selection)
+                    self.n_optsubtypes,self.n_nmfruns, self.subtyping_measure,
+                    self.model_selection)
                 subtypes, w_subtypes = sm.fit(data_corrected,diagnosis)
+                self.n_optsubtypes = sm.n_optsubtypes
                 mm = mixture_model(data_corrected.shape[1],
                         self.n_gaussians, self.n_optsubtypes, self.random_seed)
                 p_yes = mm.fit(data_corrected,diagnosis, subtypes)
-                pi0, event_centers, ih, indv_mahalanobis, sig0 = \
-                    mallows_model.weighted_mallows.fitMallows(p_yes[0],1-mm.mixing[:,0])
+                pi0 = []
+                event_centers = []
+                ih = []
+                indv_mahalanobis = []
+                sig0 = []
+                for i in range(self.n_optsubtypes):
+                    pi0_i, event_centers_i, ih_i, indv_mahalanobis_i, sig0_i = \
+                        mallows_model.weighted_mallows.fitMallows(p_yes[i],1-mm.mixing[:,i])
+                    pi0.append(pi0_i)
+                    event_centers.append(event_centers_i)
+                    ih.append(ih_i)
+                    indv_mahalanobis.append(indv_mahalanobis_i)
+                    sig0.append(sig0_i)
+
             elif np.logical_and(self.estimate_subtypes == False, subtypes is not None):
                 #Co-init DEBM
                 mm = mixture_model(data_corrected.shape[1],
@@ -120,11 +140,23 @@ class timeline():
                 sm = subtyping_model(self.random_seed, self.n_maxsubtypes, \
                     self.n_optsubtypes,self.subtyping_measure, self.model_selection)
                 subtypes, w_subtypes = sm.fit(indv_mahalanobis,diagnosis)
+                self.n_optsubtypes = sm.n_optsubtypes
                 mm = mixture_model(data_corrected.shape[1],
                         self.n_gaussians, self.n_optsubtypes, self.random_seed)
                 p_yes = mm.fit(data_corrected,diagnosis, subtypes)
-                pi0, event_centers, ih, indv_mahalanobis, sig0 = \
-                    mallows_model.weighted_mallows.fitMallows(p_yes[0],1-mm.mixing[:,0])
+                pi0 = []
+                event_centers = []
+                ih = []
+                indv_mahalanobis = []
+                sig0 = []
+                for i in range(self.n_optsubtypes):
+                    pi0_i, event_centers_i, ih_i, indv_mahalanobis_i, sig0_i = \
+                        mallows_model.weighted_mallows.fitMallows(p_yes[i],1-mm.mixing[:,i])
+                    pi0.append(pi0_i)
+                    event_centers.append(event_centers_i)
+                    ih.append(ih_i)
+                    indv_mahalanobis.append(indv_mahalanobis_i)
+                    sig0.append(sig0_i)
 
         return pi0, event_centers, mm, indv_mahalanobis, sig0, sm, w_subtypes
     
@@ -149,7 +181,7 @@ class timeline():
         self.sequence_model['event_centers'] = event_centers
         self.sequence_model['heterogeneity'] = indv_mahalanobis
         self.sequence_model['mallows_spread'] = sig0
-        self.subtyping_measure = sm 
+        self.subtyping_model = sm 
 
         if self.estimate_uncertainty == True:
             for i in range(self.bootstrap_repetitions):
