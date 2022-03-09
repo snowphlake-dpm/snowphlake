@@ -144,7 +144,7 @@ class mixture_model():
         return
     
     
-    def fit(self, data_corrected, diagnosis, subtypes=None):
+    def fit(self, data_corrected, diagnosis, subtypes=None, get_likelihood = False):
         
         ## First implementation for n_gaussians=1 and n_maxsubtypes=1
         # Truncated Gaussian for initialization 
@@ -187,24 +187,30 @@ class mixture_model():
 
         # Optimization
         self.maximum_likelihood_estimate(data_corrected, diagnosis, p_subtypes)
-        p_yes_list = self.predict_posterior(data_corrected[diagnosis!=1,:],p_subtypes)
+        p_yes_list = self.predict_posterior(data_corrected[diagnosis!=1,:],p_subtypes,get_likelihood)
         
         return p_yes_list
     
-    def predict_posterior(self,data_corrected,p_subtypes):
+    def predict_posterior(self,data_corrected,p_subtypes, get_likelihood = False):
         
         N = data_corrected.shape[1]
         if p_subtypes is None:
             p_subtypes = np.ones((data_corrected.shape[0],self.n_optsubtypes))
         p_yes_list = []
+
+        if get_likelihood == False:
+            mixing = np.copy(self.mixing)
+        else:
+            mixing = 0.5 + np.zeros(self.mixing.shape)
+
         for k in range(self.n_optsubtypes):
             idx_select = np.argmax(p_subtypes,axis=1)==k
             p_yes = np.zeros((np.sum(idx_select),N))
             for i in range(N):
 
-                wlikeli_norm = (1-self.mixing[i,k])*stats.norm.pdf(data_corrected[idx_select,i], 
+                wlikeli_norm = (1-mixing[i,k])*stats.norm.pdf(data_corrected[idx_select,i], 
                     loc = self.controls[i]['mu'][0], scale = self.controls[i]['std'][0])
-                wlikeli_abnorm = (self.mixing[i,k])*stats.norm.pdf(data_corrected[idx_select,i], 
+                wlikeli_abnorm = (mixing[i,k])*stats.norm.pdf(data_corrected[idx_select,i], 
                     loc = self.cases[i]['mu'][0,k], scale = self.cases[i]['std'][0,k])
 
                 p_yes[:,i] = np.divide(wlikeli_abnorm , (wlikeli_abnorm + wlikeli_norm))

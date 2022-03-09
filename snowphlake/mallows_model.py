@@ -57,6 +57,31 @@ class weighted_mallows:
           event_centers = event_centers[:-1]
 
           return pi0,event_centers,indv_heterogeneity, indv_mahalanobis[:,1:-1], sig0[1:-1]
+    
+    @classmethod
+    def predict_severity(h, pi0, event_centers, p_yes):
+    
+        p_no = 1 - p_yes
+        event_centers_pad=np.insert(event_centers,0,0)
+        event_centers_pad=np.append(event_centers_pad,1)
+        pk_s=np.diff(event_centers_pad)
+        pk_s[:]=1
+        
+        m=p_yes.shape
+        prob_stage = np.zeros((m[0],m[1]+1))
+        p_no_perm = p_no[:,pi0]
+        p_yes_perm = p_yes[:,pi0]
+        for j in range(m[1]+1):
+            prob_stage[:,j]=pk_s[j]*np.multiply(np.nanprod(p_yes_perm[:,:j],axis=1),np.nanprod(p_no_perm[:,j:],axis=1))
+        
+        subj_stages = np.zeros(prob_stage.shape[0])
+        for i in range(prob_stage.shape[0]):
+            idx_nan=np.isnan(p_yes_perm[i,:])
+            pr=prob_stage[i,1:]
+            ev = event_centers_pad[1:-1]
+            subj_stages[i]=np.mean(np.multiply(np.append(prob_stage[i,0],pr[~idx_nan]),np.append(event_centers_pad[0],ev[~idx_nan])))/(np.mean(np.append(prob_stage[i,0],pr[~idx_nan])))
+        
+        return subj_stages
           
     @classmethod
     def consensus(h,n,D,prob,pi0_init,flag_only_init=None):

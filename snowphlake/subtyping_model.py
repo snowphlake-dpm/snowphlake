@@ -25,8 +25,8 @@ class subtyping_model():
 
         self.model_selection = model_selection
         if self.model_selection is not None:
-            self.rss_data = np.zeros(self.n_maxsubtypes-1) 
-            self.rss_random = np.zeros(self.n_maxsubtypes-1) 
+            self.rss_data = np.zeros(self.n_maxsubtypes) 
+            self.rss_random = np.zeros(self.n_maxsubtypes) 
         if self.subtyping_measure == 'zscore':
             self.params_normalize = None 
 
@@ -36,6 +36,7 @@ class subtyping_model():
         nmf = importr('NMF')
 
         def _core_subtyping_module(data_ad, n_subtypes, flag_randomize):
+                    
             data_ad_R = ro.r.matrix(np.transpose(data_ad),
                 nrow=data_ad.shape[1],
                 ncol=data_ad.shape[0])
@@ -53,61 +54,81 @@ class subtyping_model():
             self.trained_params['Theta'] = theta
 
             return
-        
-        def _core_subtype_predicting_module(data_noncn, diagnosis, n_subtypes, flag_randomize):
+
+        def _subtype_predicting_submodule(data_this, flag_randomize):
             dir_path = os.path.dirname(os.path.realpath(__file__))
             with open(dir_path+'/nmfPredict.R', 'r') as f:
                 string = f.read()
             nmfPredict = STAP(string, "predictNMF")
+
             H = self.trained_params['Basis'] 
             theta = self.trained_params['Theta']
-            subtypes = np.zeros(data.shape[0]) + np.nan 
-            weight_subtypes = np.zeros((data.shape[0],n_subtypes)) + np.nan
             
-            data_noncn = np.transpose(data_noncn)
-            data_noncnR = ro.r.matrix(data_noncn,
-                nrow=data_noncn.shape[0],
-                ncol=data_noncn.shape[1])
-            ro.r.assign("data_noncnR",data_noncnR)
+            data_this = np.transpose(data_this)
+            data_this_R = ro.r.matrix(data_this,
+                nrow=data_this.shape[0],
+                ncol=data_this.shape[1])
+            ro.r.assign("data_this_R",data_this_R)
             if flag_randomize == True:
-                data_noncnR = nmf.randomize(data_noncnR)
-                data_noncn = np.asarray(data_noncnR)
+                data_this_R = nmf.randomize(data_this_R)
+                data_this = np.asarray(data_this_R)
 
-            prediction_model = nmfPredict.predictNMF(data_noncn, H, theta)
+            prediction_model = nmfPredict.predictNMF(data_this, H, theta)
             weights_R = np.asarray(ro.r.coefficients(prediction_model))
 
-            rss = nmf.rss(prediction_model,data_noncnR)
+            rss = nmf.rss(prediction_model,data_this_R)
             rss = np.asarray(rss)[0]
 
-            weight_subtypes[diagnosis!=1,:] = np.transpose(np.asarray(weights_R))
+            return weights_R, rss
+
+        def _core_subtype_predicting_module(data_ad, data_noncn, n_subtypes, flag_randomize):
+
+            subtypes = np.zeros(diagnosis.shape[0]) + np.nan 
+            weight_subtypes = np.zeros((diagnosis.shape[0],n_subtypes)) + np.nan
+            
+            weights_R_noncn, _ = _subtype_predicting_submodule(data_noncn, flag_randomize)
+            _, rss_AD = _subtype_predicting_submodule(data_ad, flag_randomize)
+
+            weight_subtypes[diagnosis!=1,:] = np.transpose(np.asarray(weights_R_noncn))
             subtypes[diagnosis!=1] = np.argmax(weight_subtypes[diagnosis!=1,:],axis=1)
 
-            return subtypes, weight_subtypes, rss
+            return subtypes, weight_subtypes, rss_AD
 
         def _select_opt_n(data,diagnosis):
             print('Evaluating the optimum number of subtypes.')
-            for n_subs in range(2,self.n_maxsubtypes+1):
+            for n_subs in range(1,self.n_maxsubtypes+1):
                 print ('Checking for N = ', n_subs)
                 if self.model_selection == 'full':
-                    _, _, self.rss_data[n_subs-2] = _zscore_subtyping(data, diagnosis, n_subs, flag_randomize = False)
-                    _, _, self.rss_random[n_subs-2] = _zscore_subtyping(data, diagnosis, n_subs, flag_randomize = True)
+                    if self.subtyping_measure == 'zscore':
+                        _, _, self.rss_data[n_subs-1] = _zscore_subtyping(data, diagnosis, n_subs, flag_randomize = False)
+                        _, _, self.rss_random[n_subs-1] = _zscore_subtyping(data, diagnosis, n_subs, flag_randomize = True)
+                    else:
+                        _, _, self.rss_data[n_subs-1] = _likelihood_subtyping(data, diagnosis, n_subs, flag_randomize = False)
+                        _, _, self.rss_random[n_subs-1] = _likelihood_subtyping(data, diagnosis, n_subs, flag_randomize = True)
 
             flag_more = -np.diff(self.rss_data) > -np.diff(self.rss_random)
-            idx_select = np.where(flag_more == False)[0]
+            idx_select = np.where(flag_more == True)[0]
             if len(idx_select)==0:
-                idx_select=-1
-            elif len(idx_select)>1:
-                idx_select=idx_select[-1]
+                self.n_optsubtypes = 1
+            #elif len(idx_select)>1:
+            #    idx_select=idx_select[0]
             else:
-                idx_select = idx_select[0]
-
-            self.n_optsubtypes = range(2,self.n_maxsubtypes+1)[idx_select]
+                idx_select = idx_select[-1]
+                self.n_optsubtypes = range(1,self.n_maxsubtypes+1)[idx_select+1]
             print ('Optimum number of subtypes selected:', self.n_optsubtypes)
 
             return 
         
-        def _atypicality_subtyping(data,diagnosis):
-            return 0,0
+        def _likelihood_subtyping(data,diagnosis, n_subtypes, flag_randomize = False):
+            diagnosis_noncn  = diagnosis[diagnosis!=1]
+            idx_ad = diagnosis_noncn == 3
+            data_ad = data[idx_ad,:]
+            _core_subtyping_module(data_ad, n_subtypes, flag_randomize)
+
+            data_noncn = data
+            subtypes, weight_subtypes, rss = _core_subtype_predicting_module(data_ad, data_noncn, n_subtypes, flag_randomize)
+
+            return subtypes, weight_subtypes, rss
 
         def _zscore_subtyping(data, diagnosis, n_subtypes, flag_randomize = False):
 
@@ -133,7 +154,7 @@ class subtyping_model():
             data_noncn = data_noncn - self.trained_params['normalize'][2]
             data_noncn[data_noncn<0] = 0
 
-            subtypes, weight_subtypes, rss = _core_subtype_predicting_module(data_noncn, diagnosis, n_subtypes, flag_randomize)
+            subtypes, weight_subtypes, rss = _core_subtype_predicting_module(data_ad, data_noncn, n_subtypes, flag_randomize)
 
             return subtypes, weight_subtypes, rss
         
@@ -143,6 +164,6 @@ class subtyping_model():
         if self.subtyping_measure == 'zscore':
             subtypes, weight_subtypes, _ = _zscore_subtyping(data,diagnosis, self.n_optsubtypes)
         else:
-            subtypes, weight_subtypes = _atypicality_subtyping(data,diagnosis)
+            subtypes, weight_subtypes, _ = _likelihood_subtyping(data,diagnosis, self.n_optsubtypes)
 
         return subtypes, weight_subtypes
