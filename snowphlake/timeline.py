@@ -11,9 +11,10 @@ class timeline():
 
     def __init__(self,confounding_factors=None, diagnostic_labels=None,
                     estimate_uncertainty=False, estimate_subtypes = False, 
-                    bootstrap_repetitions=100, n_nmfruns = 30, 
+                    bootstrap_repetitions=100, n_nmfruns = 50, 
                     subtyping_measure=None, random_seed=42, n_gaussians = 1,
-                    n_maxsubtypes = 1, n_optsubtypes = None, model_selection = None):
+                    n_maxsubtypes = 1, n_optsubtypes = None, model_selection = None,
+                    n_splits = 5):
 
         self.confounding_factors = confounding_factors
         self.diagnostic_labels = diagnostic_labels 
@@ -27,8 +28,10 @@ class timeline():
         self.estimate_subtypes = estimate_subtypes
         if self.estimate_subtypes == True:
             self.model_selection = model_selection # crossval, full, or None 
+            self.n_splits = None
             if self.model_selection is not None:
                 n_optsubtypes = None 
+                self.n_splits = n_splits
             else:
                 if n_optsubtypes is None: 
                     print('Error: If model_selection is None, specify n_optsubtypes')
@@ -105,7 +108,7 @@ class timeline():
                 # Snowphlake with zscore
                 sm = subtyping_model(self.random_seed, self.n_maxsubtypes,
                     self.n_optsubtypes,self.n_nmfruns, self.subtyping_measure,
-                    self.model_selection)
+                    self.model_selection, self.n_splits)
                 subtypes, w_subtypes = sm.fit(data_corrected,diagnosis)
                 self.n_optsubtypes = sm.n_optsubtypes
                 mm = mixture_model(data_corrected.shape[1],
@@ -162,7 +165,7 @@ class timeline():
                 p_yes = mm.fit(data_corrected,diagnosis,get_likelihood = True)
                 sm = subtyping_model(self.random_seed, self.n_maxsubtypes,
                     self.n_optsubtypes,self.n_nmfruns, self.subtyping_measure,
-                    self.model_selection)
+                    self.model_selection, self.n_splits)
                 subtypes, w_subtypes = sm.fit(p_yes[0],diagnosis)
                 self.n_optsubtypes = sm.n_optsubtypes
                 mm = mixture_model(data_corrected.shape[1],

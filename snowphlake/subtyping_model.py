@@ -6,13 +6,13 @@ import rpy2.robjects as ro
 rpy2.robjects.numpy2ri.activate()
 from rpy2.robjects.packages import STAP
 import numpy as np 
-from sklearn.model_selection import train_test_split 
+from sklearn.model_selection import StratifiedKFold 
 
 class subtyping_model():
 
     def __init__(self, random_seed = 42, n_maxsubtypes = 1, \
-            n_optsubtypes = None, n_nmfruns = 30, \
-            subtyping_measure = 'zscore', model_selection = None):
+            n_optsubtypes = None, n_nmfruns = 50, \
+            subtyping_measure = 'zscore', model_selection = None, n_splits = 5):
 
         self.random_seed = random_seed
         self.n_maxsubtypes = n_maxsubtypes 
@@ -28,7 +28,8 @@ class subtyping_model():
             self.rss_data = np.zeros(self.n_maxsubtypes) 
             self.rss_random = np.zeros(self.n_maxsubtypes) 
         if self.subtyping_measure == 'zscore':
-            self.params_normalize = None 
+            self.params_normalize = None
+        self.n_splits = n_splits # used only when model_selection is crossval 
 
         return
     
@@ -81,7 +82,7 @@ class subtyping_model():
 
             return weights_R, rss
 
-        def _core_subtype_predicting_module(data_ad, data_noncn, n_subtypes, flag_randomize):
+        def _core_subtype_predicting_module(data_ad, data_noncn, n_subtypes, flag_randomize, flag_modelselection = False):
 
             subtypes = np.zeros(diagnosis.shape[0]) + np.nan 
             weight_subtypes = np.zeros((diagnosis.shape[0],n_subtypes)) + np.nan
@@ -89,8 +90,9 @@ class subtyping_model():
             weights_R_noncn, _ = _subtype_predicting_submodule(data_noncn, flag_randomize)
             _, rss_AD = _subtype_predicting_submodule(data_ad, flag_randomize)
 
-            weight_subtypes[diagnosis!=1,:] = np.transpose(np.asarray(weights_R_noncn))
-            subtypes[diagnosis!=1] = np.argmax(weight_subtypes[diagnosis!=1,:],axis=1)
+            if flag_modelselection is False:
+                weight_subtypes[diagnosis!=1,:] = np.transpose(np.asarray(weights_R_noncn))
+                subtypes[diagnosis!=1] = np.argmax(weight_subtypes[diagnosis!=1,:],axis=1)
 
             return subtypes, weight_subtypes, rss_AD
 
@@ -105,6 +107,23 @@ class subtyping_model():
                     else:
                         _, _, self.rss_data[n_subs-1] = _likelihood_subtyping(data, diagnosis, n_subs, flag_randomize = False)
                         _, _, self.rss_random[n_subs-1] = _likelihood_subtyping(data, diagnosis, n_subs, flag_randomize = True)
+                elif self.model_selection == 'crossval':
+                        skf = StratifiedKFold(n_splits=5)
+                        cnt = -1
+                        rss_data_folds = np.zeros(5)
+                        rss_random_folds = np.zeros(5)
+                        for train_index, val_index in skf.split(data,diagnosis):
+                            cnt = cnt+1
+                            data_train, data_validate = data[train_index,:], data[val_index,:]
+                            diagnosis_train, diagnosis_validate = diagnosis[train_index], diagnosis[val_index]
+                            if self.subtyping_measure == 'zscore':
+                                _, _, rss_data_folds[cnt] = _zscore_subtyping(data_train, diagnosis_train, n_subs, flag_randomize = False, data_validation = data_validate, diagnosis_validation = diagnosis_validate)
+                                _, _, rss_random_folds[cnt] = _zscore_subtyping(data_train, diagnosis_train, n_subs, flag_randomize = True, data_validation = data_validate, diagnosis_validation = diagnosis_validate)
+                            else:
+                                _, _, self.rss_data[n_subs-1] = _likelihood_subtyping(data_train, diagnosis_train, n_subs, flag_randomize = False, data_validation = data_validate, diagnosis_validation = diagnosis_validate)
+                                _, _, self.rss_random[n_subs-1] = _likelihood_subtyping(data_train, diagnosis_train, n_subs, flag_randomize = True, data_validation = data_validate, diagnosis_validation = diagnosis_validate)
+                        self.rss_data[n_subs-1] = np.mean(rss_data_folds)
+                        self.rss_random[n_subs-1] = np.mean(rss_random_folds)
 
             flag_more = -np.diff(self.rss_data) > -np.diff(self.rss_random)
             idx_select = np.where(flag_more == True)[0]
@@ -119,18 +138,30 @@ class subtyping_model():
 
             return 
         
-        def _likelihood_subtyping(data,diagnosis, n_subtypes, flag_randomize = False):
+        def _likelihood_subtyping(data,diagnosis, n_subtypes,
+            flag_randomize = False, data_validation = None, diagnosis_validation = None):
             diagnosis_noncn  = diagnosis[diagnosis!=1]
             idx_ad = diagnosis_noncn == 3
+
+            #data_log = np.log(data+0.001)
             data_ad = data[idx_ad,:]
+            #self.trained_params['normalize'] = np.min(data_log)
+            #data_ad = data_ad - np.min(data_log)
             _core_subtyping_module(data_ad, n_subtypes, flag_randomize)
 
-            data_noncn = data
-            subtypes, weight_subtypes, rss = _core_subtype_predicting_module(data_ad, data_noncn, n_subtypes, flag_randomize)
+            #data_noncn = data_log - self.trained_params['normalize']
+            data_noncn = np.copy(data)
+            if data_validation is not None:
+                idx_ad_val = diagnosis_validation == 3 
+                data_ad_val = data_validation[idx_ad_val,:].copy()
+                subtypes, weight_subtypes, rss = _core_subtype_predicting_module(data_ad_val, data_noncn, n_subtypes, flag_randomize, flag_modelselection = True)
+            else:
+                subtypes, weight_subtypes, rss = _core_subtype_predicting_module(data_ad, data_noncn, n_subtypes, flag_randomize)
 
             return subtypes, weight_subtypes, rss
 
-        def _zscore_subtyping(data, diagnosis, n_subtypes, flag_randomize = False):
+        def _zscore_subtyping(data, diagnosis, n_subtypes,
+            flag_randomize = False, data_validation = None, diagnosis_validation = None):
 
             idx_ad = diagnosis == 3
             idx_cn = diagnosis == 1
@@ -154,7 +185,18 @@ class subtyping_model():
             data_noncn = data_noncn - self.trained_params['normalize'][2]
             data_noncn[data_noncn<0] = 0
 
-            subtypes, weight_subtypes, rss = _core_subtype_predicting_module(data_ad, data_noncn, n_subtypes, flag_randomize)
+            if data_validation is not None:
+                idx_ad_val = diagnosis_validation == 3 
+                data_ad_val = data_validation[idx_ad_val,:].copy()
+                for i in range(data.shape[1]):
+                    data_ad_val[:,i] = -1 * (data_ad_val[:,i] - \
+                        self.trained_params['normalize'][0][i]) / \
+                        self.trained_params['normalize'][1][i]
+                data_ad_val = data_ad_val - self.trained_params['normalize'][2]
+                data_ad_val[data_ad_val<0] = 0
+                subtypes, weight_subtypes, rss = _core_subtype_predicting_module(data_ad_val, data_noncn, n_subtypes, flag_randomize, flag_modelselection = True)
+            else:
+                subtypes, weight_subtypes, rss = _core_subtype_predicting_module(data_ad, data_noncn, n_subtypes, flag_randomize)
 
             return subtypes, weight_subtypes, rss
         
