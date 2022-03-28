@@ -7,18 +7,24 @@ rpy2.robjects.numpy2ri.activate()
 from rpy2.robjects.packages import STAP
 import numpy as np 
 from sklearn.model_selection import StratifiedKFold 
+import multiprocessing as mp 
 
 class subtyping_model():
 
     def __init__(self, random_seed = 42, n_maxsubtypes = 1, \
             n_optsubtypes = None, n_nmfruns = 50, \
-            subtyping_measure = 'zscore', model_selection = None, n_splits = 5):
+            subtyping_measure = 'zscore', model_selection = None, n_splits = 5,
+            n_cpucores = None):
 
         self.random_seed = random_seed
         self.n_maxsubtypes = n_maxsubtypes 
         self.n_optsubtypes = n_optsubtypes 
         self.n_nmfruns = n_nmfruns
         self.subtyping_measure = subtyping_measure
+        if n_cpucores is not None:
+            self.n_cpucores = n_cpucores
+        else:
+            self.n_cpucores = mp.cpu_count()*2
 
         self.trained_params = {'Basis': None, 'Theta': None,
                         'normalize': None}
@@ -36,24 +42,41 @@ class subtyping_model():
     def fit(self, data, diagnosis):
         nmf = importr('NMF')
 
+        def _nmf_call(data_ad_R, n_subtypes, i, n_parallel):
+            try:
+                model_subtype_opt = nmf.nmf(data_ad_R, n_subtypes, \
+                            method='nsNMF', nrun=n_parallel, seed=self.random_seed+i)
+                H = np.asarray(ro.r.basis(model_subtype_opt)).copy()
+                theta = np.asarray(ro.r.attributes(ro.r.fit(model_subtype_opt))[0])[0].copy()
+                self.trained_params['Basis'].append(H)
+                self.trained_params['Theta'].append(theta)
+                flag_success = 1
+            except:
+                flag_success = 0
+            
+            return flag_success            
+
         def _core_subtyping_module(data_ad, n_subtypes, flag_randomize):
-                    
+            
             data_ad_R = ro.r.matrix(np.transpose(data_ad),
                 nrow=data_ad.shape[1],
                 ncol=data_ad.shape[0])
             ro.r.assign("data_ad_R",data_ad_R)
             if flag_randomize == True:
                 data_ad_R = nmf.randomize(data_ad_R)
+            
+            self.trained_params['Basis'] = []
+            self.trained_params['Theta'] = []
+
+            remaining_runs = self.n_nmfruns
+            cnt = 0
+            while remaining_runs > 0:
+                n_parallel = np.min([self.n_cpucores,remaining_runs])
+                flag_success = _nmf_call(data_ad_R,n_subtypes,cnt,n_parallel)
+                cnt = cnt + n_parallel
+                if flag_success==1:
+                    remaining_runs = remaining_runs - n_parallel
                 
-            model_subtype_opt = nmf.nmf(data_ad_R, n_subtypes, \
-                method='nsNMF', nrun=self.n_nmfruns, seed=self.random_seed)
-
-            H = np.asarray(ro.r.basis(model_subtype_opt))
-
-            self.trained_params['Basis'] = H 
-            theta = np.asarray(ro.r.attributes(ro.r.fit(model_subtype_opt))[0])[0]
-            self.trained_params['Theta'] = theta
-
             return
 
         def _subtype_predicting_submodule(data_this, flag_randomize):
@@ -62,8 +85,8 @@ class subtyping_model():
                 string = f.read()
             nmfPredict = STAP(string, "predictNMF")
 
-            H = self.trained_params['Basis'] 
-            theta = self.trained_params['Theta']
+            H_all = self.trained_params['Basis'] 
+            theta_all = self.trained_params['Theta']
             
             data_this = np.transpose(data_this)
             data_this_R = ro.r.matrix(data_this,
@@ -74,11 +97,19 @@ class subtyping_model():
                 data_this_R = nmf.randomize(data_this_R)
                 data_this = np.asarray(data_this_R)
 
-            prediction_model = nmfPredict.predictNMF(data_this, H, theta)
-            weights_R = np.asarray(ro.r.coefficients(prediction_model))
+            rss_all = np.zeros(len(H_all))
+            for i in range(len(H_all)):
+                H = H_all[i]
+                theta = theta_all[i]
+                prediction_model = nmfPredict.predictNMF(data_this, H, theta)
+                weights_R = np.asarray(ro.r.coefficients(prediction_model))
+                rss_this = nmf.rss(prediction_model,data_this_R)
+                rss_all[i] = np.asarray(rss_this)[0]
 
-            rss = nmf.rss(prediction_model,data_this_R)
-            rss = np.asarray(rss)[0]
+            idx_min = np.argmin(rss_all)
+            rss = rss_all[idx_min]
+            self.trained_params['Basis'] = [H_all[idx_min]]
+            self.trained_params['Theta'] = [theta_all[idx_min]]
 
             return weights_R, rss
 
@@ -87,9 +118,9 @@ class subtyping_model():
             subtypes = np.zeros(diagnosis.shape[0]) + np.nan 
             weight_subtypes = np.zeros((diagnosis.shape[0],n_subtypes)) + np.nan
             
-            weights_R_noncn, _ = _subtype_predicting_submodule(data_noncn, flag_randomize)
             _, rss_AD = _subtype_predicting_submodule(data_ad, flag_randomize)
-
+            weights_R_noncn, _ = _subtype_predicting_submodule(data_noncn, flag_randomize)
+            
             if flag_modelselection is False:
                 weight_subtypes[diagnosis!=1,:] = np.transpose(np.asarray(weights_R_noncn))
                 subtypes[diagnosis!=1] = np.argmax(weight_subtypes[diagnosis!=1,:],axis=1)

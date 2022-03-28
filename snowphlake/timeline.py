@@ -14,7 +14,7 @@ class timeline():
                     bootstrap_repetitions=100, n_nmfruns = 50, 
                     subtyping_measure=None, random_seed=42, n_gaussians = 1,
                     n_maxsubtypes = 1, n_optsubtypes = None, model_selection = None,
-                    n_splits = 5):
+                    n_splits = 5, n_cpucores = None):
 
         self.confounding_factors = confounding_factors
         self.diagnostic_labels = diagnostic_labels 
@@ -49,6 +49,7 @@ class timeline():
         else:
             self.subtyping_measure=subtyping_measure # Can be either zscore or likelihood 
         self.n_nmfruns = n_nmfruns
+        self.n_cpucores = n_cpucores
 
         self.confounding_factors_model = None 
         self.mixture_model = None 
@@ -108,7 +109,7 @@ class timeline():
                 # Snowphlake with zscore
                 sm = subtyping_model(self.random_seed, self.n_maxsubtypes,
                     self.n_optsubtypes,self.n_nmfruns, self.subtyping_measure,
-                    self.model_selection, self.n_splits)
+                    self.model_selection, self.n_splits, self.n_cpucores)
                 subtypes, w_subtypes = sm.fit(data_corrected,diagnosis)
                 self.n_optsubtypes = sm.n_optsubtypes
                 mm = mixture_model(data_corrected.shape[1],
