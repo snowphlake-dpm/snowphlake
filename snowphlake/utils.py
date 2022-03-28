@@ -6,14 +6,15 @@ from sklearn.utils import resample
 
 def set_diagnosis(diagnosis,labels):
 
-    idx_cn = diagnosis == labels[0]
-    idx_ad = diagnosis == labels[-1]
+    diagnosis_new = diagnosis.copy()
+    idx_cn = diagnosis_new == labels[0]
+    idx_ad = diagnosis_new == labels[-1]
 
-    diagnosis[idx_cn]=1
-    diagnosis[idx_ad]=3
-    diagnosis[~np.logical_or(idx_cn,idx_ad)]=2
+    diagnosis_new[idx_cn]=1
+    diagnosis_new[idx_ad]=3
+    diagnosis_new[~np.logical_or(idx_cn,idx_ad)]=2
 
-    return diagnosis
+    return diagnosis_new
 
 class correct_confounding_factors():
 

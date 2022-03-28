@@ -1,11 +1,14 @@
 # Author: Vikram Venkatraghavan, Amsterdam UMC
 
+from subprocess import call
 import numpy as np
 from snowphlake.mixture_model import mixture_model
 from snowphlake.subtyping_model import subtyping_model
 import snowphlake.mallows_model as mallows_model
 import snowphlake.utils as utils
 import warnings
+import multiprocessing as mp 
+from multiprocessing.pool import ThreadPool as Pool
 
 class timeline():
 
@@ -49,7 +52,11 @@ class timeline():
         else:
             self.subtyping_measure=subtyping_measure # Can be either zscore or likelihood 
         self.n_nmfruns = n_nmfruns
-        self.n_cpucores = n_cpucores
+
+        if n_cpucores is not None:
+            self.n_cpucores = n_cpucores
+        else:
+            self.n_cpucores = mp.cpu_count()
 
         self.confounding_factors_model = None 
         self.mixture_model = None 
@@ -59,14 +66,12 @@ class timeline():
         self.biomarker_labels = None
 
         if self.estimate_uncertainty==True:
-            self.bootstrap_mixture_model = [] 
-            self.bootstrap_subtyping_model = [] 
+            self.bootstrap_mixture_model = [[]for x in range(self.bootstrap_repetitions)]
             self.bootstrap_sequence_model = [{'ordering': None, 
                             'event_centers': None,
-                            'mallows_spread': None} for x in range(bootstrap_repetitions)]
+                            'mallows_spread': None} for x in range(self.bootstrap_repetitions)]
 
     def estimate_instance(self, data, diagnosis, subtypes):
-
         if self.diagnostic_labels is not None:
             diagnosis=utils.set_diagnosis(diagnosis,self.diagnostic_labels)
 
@@ -160,7 +165,7 @@ class timeline():
 
             elif np.logical_and(self.estimate_subtypes == True,\
                     self.subtyping_measure == 'likelihood'):
-                #Snowphlake with atypicality
+                #Snowphlake with likelihood
                 mm = mixture_model(data_corrected.shape[1],
                         self.n_gaussians, 1, self.random_seed)
                 p_yes = mm.fit(data_corrected,diagnosis,get_likelihood = True)
@@ -207,30 +212,52 @@ class timeline():
                 self.n_optsubtypes = self.n_maxsubtypes
 
         pi0,event_centers, mm, sig0, sm, subjects_derived_info = \
-            self.estimate_instance(data, diagnosis, subtypes)
+            self.estimate_instance(data, diagnosis.copy(), subtypes)
         self.mixture_model = mm
         self.sequence_model['ordering'] = pi0 
         self.sequence_model['event_centers'] = event_centers
         self.sequence_model['mallows_spread'] = sig0
         self.subtyping_model = sm 
-        subjects_derived_info_resampled = []
-        if self.estimate_uncertainty == True:
-            for i in range(self.bootstrap_repetitions):
-                data_resampled, diagnosis_resampled, subtypes_resampled = \
-                    utils.bootstrap_resample(data,diagnosis,subtypes,self.random_seed + i)
-                #TODO: For data-driven subtyping, make sure the subtypes are rearranged so that 
-                # each subtype id belongs to the closest from the main model.
-                pi0_resampled,event_centers_resampled, mm_resampled,\
-                    sig0_resampled, sm_resampled, \
-                    subjects_derived_info_resampled_i = self.estimate_instance(data_resampled, \
-                            diagnosis_resampled, subtypes_resampled)
-                
-                subjects_derived_info_resampled.append(subjects_derived_info_resampled_i)
-                self.bootstrap_mixture_model.append(mm_resampled)
+        
+        if subtypes is not None:
+            subtypes = subjects_derived_info['subtypes'].copy()
+
+        def _estimate_uncertainty(i):
+            data_resampled, diagnosis_resampled, subtypes_resampled = \
+                utils.bootstrap_resample(data,diagnosis.copy(),subtypes,self.random_seed + i)
+            pi0_resampled,event_centers_resampled, mm_resampled, sig0_resampled, _,\
+                subjects_derived_info_resampled_i = self.estimate_instance(data_resampled,
+                diagnosis_resampled, subtypes_resampled)
+            
+            return [i, pi0_resampled,event_centers_resampled, mm_resampled, sig0_resampled, subjects_derived_info_resampled_i]
+
+        def _strore_result(output):
+            for x in range(len(output)):
+                output_this = output[x]
+                i, pi0_resampled,event_centers_resampled, mm_resampled,\
+                    sig0_resampled, subjects_derived_info_resampled_i = output_this[0],\
+                    output_this[1], output_this[2], output_this[3], output_this[4], output_this[5]
+
+                self.bootstrap_mixture_model[i] = mm_resampled
                 self.bootstrap_sequence_model[i]['ordering'] = pi0_resampled
                 self.bootstrap_sequence_model[i]['event_centers'] = event_centers_resampled 
                 self.bootstrap_sequence_model[i]['mallows_spread'] = sig0_resampled
-                self.bootstrap_subtyping_model.append(sm_resampled)
+                subjects_derived_info_resampled[i] = subjects_derived_info_resampled_i.copy()
+            return
+
+        if self.estimate_uncertainty == True:
+            print('Estimating Uncertainty')
+            self.estimate_subtypes = False
+            pool = Pool(self.n_cpucores)
+            inputs = []
+            subjects_derived_info_resampled = [[] for x in range(self.bootstrap_repetitions)]
+            for i in range(self.bootstrap_repetitions):
+                inputs.append(i)
+            pool.map_async(_estimate_uncertainty, inputs, callback=_strore_result)
+            pool.close()
+            pool.join()
+        else:
+            subjects_derived_info_resampled = []
 
         return subjects_derived_info, subjects_derived_info_resampled
     

@@ -7,24 +7,18 @@ rpy2.robjects.numpy2ri.activate()
 from rpy2.robjects.packages import STAP
 import numpy as np 
 from sklearn.model_selection import StratifiedKFold 
-import multiprocessing as mp 
 
 class subtyping_model():
 
     def __init__(self, random_seed = 42, n_maxsubtypes = 1, \
             n_optsubtypes = None, n_nmfruns = 50, \
-            subtyping_measure = 'zscore', model_selection = None, n_splits = 5,
-            n_cpucores = None):
+            subtyping_measure = 'zscore', model_selection = None, n_splits = 5):
 
         self.random_seed = random_seed
         self.n_maxsubtypes = n_maxsubtypes 
         self.n_optsubtypes = n_optsubtypes 
         self.n_nmfruns = n_nmfruns
         self.subtyping_measure = subtyping_measure
-        if n_cpucores is not None:
-            self.n_cpucores = n_cpucores
-        else:
-            self.n_cpucores = mp.cpu_count()*2
 
         self.trained_params = {'Basis': None, 'Theta': None,
                         'normalize': None}
@@ -45,7 +39,7 @@ class subtyping_model():
         def _nmf_call(data_ad_R, n_subtypes, i, n_parallel):
             try:
                 model_subtype_opt = nmf.nmf(data_ad_R, n_subtypes, \
-                            method='nsNMF', nrun=n_parallel, seed=self.random_seed+i)
+                            method='nsNMF', nrun=n_parallel, seed=self.random_seed+(n_parallel*i))
                 H = np.asarray(ro.r.basis(model_subtype_opt)).copy()
                 theta = np.asarray(ro.r.attributes(ro.r.fit(model_subtype_opt))[0])[0].copy()
                 self.trained_params['Basis'].append(H)
@@ -68,15 +62,16 @@ class subtyping_model():
             self.trained_params['Basis'] = []
             self.trained_params['Theta'] = []
 
-            remaining_runs = self.n_nmfruns
-            cnt = 0
-            while remaining_runs > 0:
-                n_parallel = np.min([self.n_cpucores,remaining_runs])
-                flag_success = _nmf_call(data_ad_R,n_subtypes,cnt,n_parallel)
-                cnt = cnt + n_parallel
-                if flag_success==1:
-                    remaining_runs = remaining_runs - n_parallel
-                
+            flag_success=0
+            cnt = -1
+            while flag_success==0:
+                cnt = cnt + 1
+                if n_subtypes==1:
+                    runs = 1
+                else:
+                    runs = self.n_nmfruns
+                flag_success = _nmf_call(data_ad_R,n_subtypes,cnt,runs)
+
             return
 
         def _subtype_predicting_submodule(data_this, flag_randomize):
