@@ -114,7 +114,7 @@ class timeline():
                 # Snowphlake with zscore
                 sm = subtyping_model(self.random_seed, self.n_maxsubtypes,
                     self.n_optsubtypes,self.n_nmfruns, self.subtyping_measure,
-                    self.model_selection, self.n_splits, self.n_cpucores)
+                    self.model_selection, self.n_splits)
                 subtypes, w_subtypes = sm.fit(data_corrected,diagnosis)
                 self.n_optsubtypes = sm.n_optsubtypes
                 mm = mixture_model(data_corrected.shape[1],
