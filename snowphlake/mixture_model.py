@@ -195,7 +195,7 @@ class mixture_model():
         
         N = data_corrected.shape[1]
         if p_subtypes is None:
-            p_subtypes = np.ones((data_corrected.shape[0],self.n_optsubtypes))
+            p_subtypes = np.ones((data_corrected.shape[0],1))
         p_yes_list = []
 
         if get_likelihood == False:

@@ -1,6 +1,12 @@
 # Author: Vikram Venkatraghavan, Amsterdam UMC
 
-from subprocess import call
+#TODO: 
+# predict atypicality measure for debm, co-init debm.
+# predict function untested for likelihood based subtyping.
+# get all nmf runs and store in list.
+# get cophenetic score and silhouette score in testing.
+# bootstrap parallelization doesnt work. Take care of the global flag self.estimate_subtypes
+
 import numpy as np
 from snowphlake.mixture_model import mixture_model
 from snowphlake.subtyping_model import subtyping_model
@@ -14,7 +20,7 @@ class timeline():
 
     def __init__(self,confounding_factors=None, diagnostic_labels=None,
                     estimate_uncertainty=False, estimate_subtypes = False, 
-                    bootstrap_repetitions=100, n_nmfruns = 50, 
+                    bootstrap_repetitions=100, n_nmfruns = 30, 
                     subtyping_measure=None, random_seed=42, n_gaussians = 1,
                     n_maxsubtypes = 1, n_optsubtypes = None, model_selection = None,
                     n_splits = 5, n_cpucores = None):
@@ -133,7 +139,7 @@ class timeline():
                     subj_stages_i = mallows_model.weighted_mallows.predict_severity(pi0_i,event_centers_i, p_yes[i])
 
                     subjects_derived_info['staging'][subtypes==i] = subj_stages_i
-                    subjects_derived_info['atypicality'][subtypes==i] = atypicality_sum_i
+                    subjects_derived_info['atypicality'][subtypes==i] = np.asarray(atypicality_sum_i)
                     subjects_derived_info['atypicality_all'][subtypes==i,:] = atypicality_all_i
                     pi0.append(pi0_i)
                     event_centers.append(event_centers_i)
@@ -157,7 +163,7 @@ class timeline():
 
                     idx_this = np.logical_and(subtypes==unique_subtypes[i],diagnosis!=1)
                     subjects_derived_info['staging'][idx_this] = subj_stages_i
-                    subjects_derived_info['atypicality'][idx_this] = atypicality_sum_i
+                    subjects_derived_info['atypicality'][idx_this] = np.asarray(atypicality_sum_i)
                     subjects_derived_info['atypicality_all'][idx_this,:] = atypicality_all_i
                     pi0.append(pi0_i)
                     event_centers.append(event_centers_i)
@@ -166,9 +172,9 @@ class timeline():
             elif np.logical_and(self.estimate_subtypes == True,\
                     self.subtyping_measure == 'likelihood'):
                 #Snowphlake with likelihood
-                mm = mixture_model(data_corrected.shape[1],
+                mm_init = mixture_model(data_corrected.shape[1],
                         self.n_gaussians, 1, self.random_seed)
-                p_yes = mm.fit(data_corrected,diagnosis,get_likelihood = True)
+                p_yes = mm_init.fit(data_corrected,diagnosis,get_likelihood = True)
                 sm = subtyping_model(self.random_seed, self.n_maxsubtypes,
                     self.n_optsubtypes,self.n_nmfruns, self.subtyping_measure,
                     self.model_selection, self.n_splits)
@@ -177,6 +183,7 @@ class timeline():
                 mm = mixture_model(data_corrected.shape[1],
                         self.n_gaussians, self.n_optsubtypes, self.random_seed)
                 p_yes = mm.fit(data_corrected,diagnosis, subtypes)
+                
                 pi0 = []
                 event_centers = []
                 sig0 = []
@@ -188,12 +195,13 @@ class timeline():
                     subj_stages_i = mallows_model.weighted_mallows.predict_severity(pi0_i,event_centers_i, p_yes[i])
 
                     subjects_derived_info['staging'][subtypes==i] = subj_stages_i
-                    subjects_derived_info['atypicality'][subtypes==i] = atypicality_sum_i
+                    subjects_derived_info['atypicality'][subtypes==i] = np.asarray(atypicality_sum_i)
                     subjects_derived_info['atypicality_all'][subtypes==i,:] = atypicality_all_i
                     
                     pi0.append(pi0_i)
                     event_centers.append(event_centers_i)
                     sig0.append(sig0_i)
+                mm = [mm_init, mm]
 
         return pi0, event_centers, mm, sig0, sm, subjects_derived_info
     
@@ -218,54 +226,131 @@ class timeline():
         self.sequence_model['event_centers'] = event_centers
         self.sequence_model['mallows_spread'] = sig0
         self.subtyping_model = sm 
-        
-        if subtypes is not None:
+        print('Timeline estimated.')
+        if subtypes is None:
             subtypes = subjects_derived_info['subtypes'].copy()
 
         def _estimate_uncertainty(i):
             data_resampled, diagnosis_resampled, subtypes_resampled = \
                 utils.bootstrap_resample(data,diagnosis.copy(),subtypes,self.random_seed + i)
+            orig_val = self.estimate_subtypes
+            self.estimate_subtypes = False
             pi0_resampled,event_centers_resampled, mm_resampled, sig0_resampled, _,\
-                subjects_derived_info_resampled_i = self.estimate_instance(data_resampled,
+                _ = self.estimate_instance(data_resampled,
                 diagnosis_resampled, subtypes_resampled)
-            
-            return [i, pi0_resampled,event_centers_resampled, mm_resampled, sig0_resampled, subjects_derived_info_resampled_i]
+            self.estimate_subtypes = orig_val
+            self.bootstrap_mixture_model[i] = mm_resampled
+            self.bootstrap_sequence_model[i]['ordering'] = pi0_resampled
+            self.bootstrap_sequence_model[i]['event_centers'] = event_centers_resampled 
+            self.bootstrap_sequence_model[i]['mallows_spread'] = sig0_resampled
+            subjects_derived_info_resampled_i = timeline.predict(self, data,\
+                subtypes = subtypes, iter_bootstrap = i, diagnosis = diagnosis)
+                        
+            return [i, subjects_derived_info_resampled_i]
 
         def _strore_result(output):
             for x in range(len(output)):
                 output_this = output[x]
-                i, pi0_resampled,event_centers_resampled, mm_resampled,\
-                    sig0_resampled, subjects_derived_info_resampled_i = output_this[0],\
-                    output_this[1], output_this[2], output_this[3], output_this[4], output_this[5]
+                i, subjects_derived_info_resampled_i = output_this[0], output_this[1]
 
-                self.bootstrap_mixture_model[i] = mm_resampled
-                self.bootstrap_sequence_model[i]['ordering'] = pi0_resampled
-                self.bootstrap_sequence_model[i]['event_centers'] = event_centers_resampled 
-                self.bootstrap_sequence_model[i]['mallows_spread'] = sig0_resampled
                 subjects_derived_info_resampled[i] = subjects_derived_info_resampled_i.copy()
-            return
+            return 
 
         if self.estimate_uncertainty == True:
-            print('Estimating Uncertainty')
-            self.estimate_subtypes = False
-            pool = Pool(self.n_cpucores)
-            inputs = []
+            print('Estimating uncertainty.')
+            
+            #pool = Pool(self.n_cpucores * 2)
+            #inputs = []
+            global subjects_derived_info_resampled
             subjects_derived_info_resampled = [[] for x in range(self.bootstrap_repetitions)]
+            outputs = []
             for i in range(self.bootstrap_repetitions):
-                inputs.append(i)
-            pool.map_async(_estimate_uncertainty, inputs, callback=_strore_result)
-            pool.close()
-            pool.join()
+                #inputs.append(i)
+                output = _estimate_uncertainty(i)
+                outputs.append(output)
+            
+            _strore_result(outputs)
+            #pool.map_async(_estimate_uncertainty, inputs, callback=_strore_result)
+            #pool.close()
+            #pool.join()
         else:
             subjects_derived_info_resampled = []
 
         return subjects_derived_info, subjects_derived_info_resampled
     
-    def predict_severity(self, data):
+    def predict(self, data, subtypes = None, iter_bootstrap = None, diagnosis = None):
         ## This is currently non-functional
-        utils.checkifestimated(self)
-        data_corrected = self.confounding_factors_model.predict(data)
-        p_yes=self.gmm.predict_posterior(data_corrected)
-        stages = self.mallows_model.predict(p_yes)
+        if iter_bootstrap is None:
+            cf = self.confounding_factors_model
+            mix = self.mixture_model
+            sub = self.subtyping_model
+            seq = self.sequence_model
+        else:
+            cf = self.confounding_factors_model
+            mix = self.bootstrap_mixture_model[iter_bootstrap]
+            sub = self.subtyping_model
+            seq = self.bootstrap_sequence_model[iter_bootstrap]
+        subjects_derived_info = {
+            'staging': np.zeros(data.shape[0]) + np.nan ,
+            'subtypes': np.zeros(data.shape[0]) + np.nan ,
+            'subtypes_weights': np.zeros((data.shape[0],self.n_optsubtypes)) + np.nan ,
+            'atypicality': np.zeros(data.shape[0]) + np.nan, 
+            'atypicality_all': np.zeros((data.shape[0],data.shape[1]-1)) + np.nan
+        }
 
-        return stages,p_yes
+        if self.confounding_factors is not None:
+            #TODO: confounding factor predict function 
+            data_corrected = cf.predict(data)
+        else:
+            data_corrected = data 
+        
+        if diagnosis is not None:
+            diagnosis=utils.set_diagnosis(diagnosis,self.diagnostic_labels)
+            idx_noncn = diagnosis != 1
+        else:
+            idx_noncn = np.ones(data.shape[0],dtype=bool)
+        if type(mix) == list:
+            p_yes = mix[0].predict_posterior(data_corrected, None, get_likelihood = True)
+        if self.estimate_subtypes == True:
+            if self.subtyping_measure=='zscore':
+                subtypes, weights = sub.predict(data_corrected)
+                p_yes = mix.predict_posterior(data_corrected, weights)
+            else:
+                subtypes, weights = sub.predict(p_yes)
+                p_yes = mix[1].predict_posterior(data_corrected, weights)
+            subjects_derived_info['subtypes_weights'][idx_noncn,:] = weights[idx_noncn,:]
+        elif subtypes is not None:
+            p_subtypes = np.zeros((subtypes.shape[0],self.n_optsubtypes))
+            unique_subtypes = np.unique(subtypes[~np.isnan(subtypes)])
+            for i in range(self.n_optsubtypes):
+                idx_i = subtypes == unique_subtypes[i]
+                p_subtypes[idx_i,i] = 1
+            p_yes = mix.predict_posterior(data_corrected, p_subtypes)
+        else:
+            p_yes = mix.predict_posterior(data_corrected, None)
+
+        if subtypes is not None:
+            subjects_derived_info['subtypes'][idx_noncn] = subtypes[idx_noncn]
+            unique_subtypes = np.unique(subtypes[~np.isnan(subtypes)])
+            for i in range(self.n_optsubtypes):
+                pi0_i = seq['ordering'][i]
+                event_centers_i = seq['event_centers'][i]
+                subj_stages_i, atypicality_sum_i, atypicality_all_i = mallows_model.weighted_mallows.predict(pi0_i,event_centers_i, p_yes[i])
+                idx_this = subtypes==unique_subtypes[i]
+                subjects_derived_info['staging'][idx_this] = subj_stages_i
+                #TODO: Atypicality estimated in training and testing are not the same. Rectify this.
+                #TODO: Remove atypicality_all
+                subjects_derived_info['atypicality'][idx_this] = np.asarray(atypicality_sum_i)
+                subjects_derived_info['atypicality_all'][idx_this,:] = atypicality_all_i[:,1:-1]
+            subjects_derived_info['staging'][~idx_noncn] = np.nan 
+            subjects_derived_info['atypicality'][~idx_noncn] = np.nan
+            subjects_derived_info['atypicality_all'][~idx_noncn,:] = np.nan 
+        else:
+            pi0 = seq['ordering'][0]
+            event_centers = seq['event_centers'][0]
+            subj_stages, atypicality_sum, atypicality_all = mallows_model.weighted_mallows.predict(pi0,event_centers, p_yes[0])
+            subjects_derived_info['staging'][idx_noncn] = subj_stages[idx_noncn]
+            subjects_derived_info['atypicality'][idx_noncn] = np.asarray(atypicality_sum)[idx_noncn]
+            subjects_derived_info['atypicality_all'][idx_noncn,:] = atypicality_all[:,1:-1][idx_noncn,:]
+
+        return subjects_derived_info

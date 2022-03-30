@@ -19,10 +19,10 @@ def Prob2ListAndWeights(p_yes):
         weights_reverse=np.sort(p_yes[i,:])
         valid_indices=np.logical_not(np.isnan(weights_reverse))
         weights_reverse = weights_reverse[valid_indices]
-        SubjectwiseWeights.append(weights_reverse[::-1].tolist());
-        ordering_reverse=np.argsort(p_yes[i,:]);
+        SubjectwiseWeights.append(weights_reverse[::-1].tolist())
+        ordering_reverse=np.argsort(p_yes[i,:])
         ordering_reverse = ordering_reverse[valid_indices].astype(int)
-        SubjectwiseOrdering.append(ordering_reverse[::-1].tolist());
+        SubjectwiseOrdering.append(ordering_reverse[::-1].tolist())
     
     return SubjectwiseOrdering,SubjectwiseWeights
 
@@ -244,3 +244,15 @@ class weighted_mallows:
             if pi[i]==val:
                 return i                
         return -1
+
+    @classmethod
+    def predict(h, pi0,event_centers, p_yes):
+        subj_stages = weighted_mallows.predict_severity(pi0, event_centers, p_yes)
+        p_yes_padded = np.concatenate((np.zeros((p_yes.shape[0],1)),p_yes,np.ones((p_yes.shape[0],1))),axis=1)
+        so_list,weights_list = Prob2ListAndWeights(p_yes_padded)
+        num_events = p_yes.shape[1]
+        pi0=np.insert(pi0.copy(),0,num_events+1)
+        pi0=np.append(pi0.copy(),0)
+        _,atypicality,atypicality_all = weighted_mallows.totalconsensus(pi0,so_list,weights_list)
+        
+        return subj_stages, atypicality, atypicality_all
