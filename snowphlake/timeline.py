@@ -23,7 +23,7 @@ class timeline():
                     bootstrap_repetitions=100, n_nmfruns = 30, 
                     subtyping_measure=None, random_seed=42, n_gaussians = 1,
                     n_maxsubtypes = 1, n_optsubtypes = None, model_selection = None,
-                    n_splits = 5, n_cpucores = None):
+                    n_splits = 10, n_cpucores = None):
 
         self.confounding_factors = confounding_factors
         self.diagnostic_labels = diagnostic_labels 
@@ -305,7 +305,8 @@ class timeline():
             data_corrected = data 
         
         if diagnosis is not None:
-            diagnosis=utils.set_diagnosis(diagnosis,self.diagnostic_labels)
+            if self.diagnostic_labels is not None:
+                diagnosis=utils.set_diagnosis(diagnosis,self.diagnostic_labels)
             idx_noncn = diagnosis != 1
         else:
             idx_noncn = np.ones(data.shape[0],dtype=bool)

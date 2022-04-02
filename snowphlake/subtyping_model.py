@@ -13,7 +13,7 @@ class subtyping_model():
 
     def __init__(self, random_seed = 42, n_maxsubtypes = 1, \
             n_optsubtypes = None, n_nmfruns = 50, \
-            subtyping_measure = 'zscore', model_selection = None, n_splits = 5):
+            subtyping_measure = 'zscore', model_selection = None, n_splits = 10):
 
         self.random_seed = random_seed
         self.n_maxsubtypes = n_maxsubtypes 
@@ -116,19 +116,15 @@ class subtyping_model():
                 if n_subtypes==1:
                     runs = 1
                     flag_success, model_subtype_opt  = _nmf_call(data_ad_R,n_subtypes,cnt,runs)
+                    silhouette_score = 1
+                    cophenetic_correlation = 1
                 else:
                     runs = self.n_nmfruns
                     flag_success, model_subtype_opt  = _nmf_call(data_ad_R,n_subtypes,cnt,runs)
-                    if self.cophenetic_correlation is not None:
-                        self.cophenetic_correlation[n_subtypes-1] = np.asarray(ro.r.cophcor(model_subtype_opt))[0]
-                        S = np.asarray(ro.r.silhouette(model_subtype_opt,what='consensus'))
-                        self.silhouette_score[n_subtypes-1] = S[:,-1].mean()
-                    else:
-                        self.cophenetic_correlation = np.asarray(ro.r.cophcor(model_subtype_opt))[0]
-                        S = np.asarray(ro.r.silhouette(model_subtype_opt,what='consensus'))
-                        self.silhouette_score = S[:,-1].mean()
-                           
-            return
+                    S = np.asarray(ro.r.silhouette(model_subtype_opt,what='consensus'))
+                    silhouette_score = S[:,-1].mean()
+                    cophenetic_correlation = np.asarray(ro.r.cophcor(model_subtype_opt))[0]      
+            return silhouette_score,cophenetic_correlation
 
         def _core_subtype_predicting_module(data_ad, data_noncn, n_subtypes, flag_randomize, flag_modelselection = False):
 
@@ -152,18 +148,20 @@ class subtyping_model():
                     if self.subtyping_measure == 'zscore':
                         _, _, metrics = _zscore_subtyping(data, diagnosis, n_subs, flag_randomize = False)
                         _, _, metrics_random = _zscore_subtyping(data, diagnosis, n_subs, flag_randomize = True)
-                        self.rss_data[n_subs-1] = metrics[0]
-                        self.rss_random[n_subs-1] = metrics_random[0]
                     else:
                         _, _, metrics = _likelihood_subtyping(data, diagnosis, n_subs, flag_randomize = False)
                         _, _, metrics_random = _likelihood_subtyping(data, diagnosis, n_subs, flag_randomize = True)
-                        self.rss_data[n_subs-1] = metrics[0]
-                        self.rss_random[n_subs-1] = metrics_random[0]
+                    self.rss_data[n_subs-1] = metrics[0]
+                    self.rss_random[n_subs-1] = metrics_random[0]
+                    self.silhouette_score[n_subs-1] = metrics[2]
+                    self.cophenetic_correlation[n_subs-1] = metrics[3]
                 elif self.model_selection == 'crossval':
-                        skf = StratifiedKFold(n_splits=5)
+                        skf = StratifiedKFold(n_splits=self.n_splits)
                         cnt = -1
-                        rss_data_folds = np.zeros(5)
-                        rss_random_folds = np.zeros(5)
+                        rss_data_folds = np.zeros(self.n_splits)
+                        rss_random_folds = np.zeros(self.n_splits)
+                        sil_score_folds = np.zeros(self.n_splits)
+                        coph_corr_folds = np.zeros(self.n_splits)
                         for train_index, val_index in skf.split(data,diagnosis):
                             cnt = cnt+1
                             data_train, data_validate = data[train_index,:], data[val_index,:]
@@ -171,15 +169,17 @@ class subtyping_model():
                             if self.subtyping_measure == 'zscore':
                                 _, _, metrics = _zscore_subtyping(data_train, diagnosis_train, n_subs, flag_randomize = False, data_validation = data_validate, diagnosis_validation = diagnosis_validate)
                                 _, _, metrics_random = _zscore_subtyping(data_train, diagnosis_train, n_subs, flag_randomize = True, data_validation = data_validate, diagnosis_validation = diagnosis_validate)
-                                rss_data_folds[cnt] = metrics[0]
-                                rss_random_folds[cnt] = metrics_random[0]
                             else:
                                 _, _, metrics = _likelihood_subtyping(data_train, diagnosis_train, n_subs, flag_randomize = False, data_validation = data_validate, diagnosis_validation = diagnosis_validate)
                                 _, _, metrics_random = _likelihood_subtyping(data_train, diagnosis_train, n_subs, flag_randomize = True, data_validation = data_validate, diagnosis_validation = diagnosis_validate)
-                                rss_data_folds[cnt] = metrics[0]
-                                rss_random_folds[cnt] = metrics_random[0]
+                            rss_data_folds[cnt] = metrics[0]
+                            rss_random_folds[cnt] = metrics_random[0]
+                            sil_score_folds[cnt] = metrics[2]
+                            coph_corr_folds[cnt] = metrics[3]
                         self.rss_data[n_subs-1] = np.mean(rss_data_folds)
                         self.rss_random[n_subs-1] = np.mean(rss_random_folds)
+                        self.silhouette_score[n_subs-1] = np.mean(sil_score_folds)
+                        self.cophenetic_correlation[n_subs-1] = np.mean(coph_corr_folds)
 
             flag_more = -np.diff(self.rss_data) > -np.diff(self.rss_random)
             idx_select = np.where(flag_more == True)[0]
@@ -201,7 +201,7 @@ class subtyping_model():
             data_ad = data[idx_ad,:]
             #self.trained_params['normalize'] = np.min(data_log)
             #data_ad = data_ad - np.min(data_log)
-            _core_subtyping_module(data_ad, n_subtypes, flag_randomize)
+            silhouette_score,cophenetic_correlation = _core_subtyping_module(data_ad, n_subtypes, flag_randomize)
 
             #data_noncn = data_log - self.trained_params['normalize']
             data_noncn = np.copy(data)
@@ -211,7 +211,8 @@ class subtyping_model():
                 subtypes, weight_subtypes, subtype_metrics = _core_subtype_predicting_module(data_ad_val, data_noncn, n_subtypes, flag_randomize, flag_modelselection = True)
             else:
                 subtypes, weight_subtypes, subtype_metrics = _core_subtype_predicting_module(data_ad, data_noncn, n_subtypes, flag_randomize)
-
+            subtype_metrics.append(silhouette_score)
+            subtype_metrics.append(cophenetic_correlation)
             return subtypes, weight_subtypes, subtype_metrics
 
         def _zscore_subtyping(data, diagnosis, n_subtypes,
@@ -229,7 +230,7 @@ class subtyping_model():
             self.trained_params['normalize'] = [mean_cn,std_cn,np.min(data_ad)] 
 
             data_ad = data_ad - np.min(data_ad)
-            _core_subtyping_module(data_ad, n_subtypes, flag_randomize)
+            silhouette_score,cophenetic_correlation = _core_subtyping_module(data_ad, n_subtypes, flag_randomize)
             
             data_noncn = data[diagnosis!=1,:] 
             for i in range(data.shape[1]):
@@ -251,7 +252,8 @@ class subtyping_model():
                 subtypes, weight_subtypes, subtype_metrics = _core_subtype_predicting_module(data_ad_val, data_noncn, n_subtypes, flag_randomize, flag_modelselection = True)
             else:
                 subtypes, weight_subtypes, subtype_metrics = _core_subtype_predicting_module(data_ad, data_noncn, n_subtypes, flag_randomize)
-
+            subtype_metrics.append(silhouette_score)
+            subtype_metrics.append(cophenetic_correlation)
             return subtypes, weight_subtypes, subtype_metrics
         
         if self.n_optsubtypes is None:
@@ -265,6 +267,8 @@ class subtyping_model():
         
         if self.rss_data is None:
             self.rss_data = subtype_metrics[0]
+            self.silhouette_score = subtype_metrics[2]
+            self.cophenetic_correlation = subtype_metrics[3]
 
         return subtypes, weight_subtypes
 

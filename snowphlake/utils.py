@@ -13,7 +13,7 @@ def set_diagnosis(diagnosis,labels):
     diagnosis_new[idx_cn]=1
     diagnosis_new[idx_ad]=3
     diagnosis_new[~np.logical_or(idx_cn,idx_ad)]=2
-
+    diagnosis_new=diagnosis_new.astype(int)
     return diagnosis_new
 
 class correct_confounding_factors():
