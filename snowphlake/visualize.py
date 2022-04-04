@@ -1,13 +1,158 @@
 # Author: Vikram Venkatraghavan, Amsterdam UMC
 
-# Ordering for subtypes
-# timeline for subtypes
-# 1D biomarker distributions --> uncertainty with bootstrapping 
-# tSNE for high dimensional biomarkers ?
+from matplotlib import pyplot as plt 
+import numpy as np 
+import pandas as pd 
+import plotly.express as px
+import plotly.io as pio
+import plotly.graph_objs as go
+import plotly.offline as pyo
 
-# Staging + timeline -> normal 
-# Kdes --> boostrapping uncertainty
-# Staging + timeline --> atypicality
-# Heterogeneity --> inter vs intra subtype
-# Subtypes distribution
-# individual patient 
+def subtype_metrics(T):
+
+    fig, ax = plt.subplots(3,1,figsize=(7, 7))
+    ax[0].set_title('Metric: Residual sum of squares (RSS)')
+    ax[0].plot(range(2,1+T.n_maxsubtypes),-np.diff(T.subtyping_model.rss_data),color='k')
+    ax[0].plot(range(2,1+T.n_maxsubtypes),-np.diff(T.subtyping_model.rss_random))
+    ax[0].set_xlabel('Number of subtypes')
+    ax[0].set_ylabel('Change in RSS')
+    ax[0].grid(visible=True,linestyle='--')
+    ax[0].legend(['Data','Random'])
+
+    ax[1].set_title('Silhouette score (SS)')
+    ax[1].plot(range(1,1+T.n_maxsubtypes),T.subtyping_model.silhouette_score)
+    ax[1].set_xlabel('Number of subtypes')
+    ax[1].set_ylabel('SS')
+    ax[1].grid(visible=True,linestyle='--')
+
+    ax[2].set_title('Cophenetic correlation (CC)')
+    ax[2].plot(range(1,1+T.n_maxsubtypes),T.subtyping_model.cophenetic_correlation)
+    ax[2].set_xlabel('Number of subtypes')
+    ax[2].set_ylabel('CC')
+    ax[2].grid(visible=True,linestyle='--')
+    fig.tight_layout()
+
+    return fig, ax
+
+def subtypes_piechart(S,diagnosis,diagnostic_labels_for_plotting,title = None,subtype_labels = None):
+
+    fig, ax = plt.subplots(figsize=(6, 3), subplot_kw=dict(aspect="equal"))
+    
+    unique_subtypes = np.unique(S['subtypes'][~np.isnan(S['subtypes'])])
+    if subtype_labels is None:
+        subtype_labels = []
+        for i in range(len(unique_subtypes)):
+            subtype_labels.append('Subtype '+str(int(unique_subtypes[i])))
+    
+    n_data = np.zeros(len(unique_subtypes))
+    for d in diagnostic_labels_for_plotting:
+        idx_d = diagnosis == d
+        for u in range(len(unique_subtypes)):
+            n_data[u] = n_data[u] + np.sum(S['subtypes'][idx_d] == unique_subtypes[u])
+
+    wedges, _ = ax.pie(n_data, wedgeprops=dict(width=0.5), startangle=-40)
+
+    bbox_props = dict(boxstyle="square,pad=0.3", fc="w", ec="k", lw=0.72)
+    kw = dict(arrowprops=dict(arrowstyle="-"),
+            bbox=bbox_props, zorder=0, va="center")
+
+    for i, p in enumerate(wedges):
+        ang = (p.theta2 - p.theta1)/2. + p.theta1
+        y = np.sin(np.deg2rad(ang))
+        x = np.cos(np.deg2rad(ang))
+        horizontalalignment = {-1: "right", 1: "left"}[int(np.sign(x))]
+        connectionstyle = "angle,angleA=0,angleB={}".format(ang)
+        kw["arrowprops"].update({"connectionstyle": connectionstyle})
+        ax.annotate(subtype_labels[i], xy=(x, y), xytext=(1.35*np.sign(x), 1.4*y),
+                    horizontalalignment=horizontalalignment, **kw)
+    
+    if title is not None:
+        ax.set_title(title)
+
+    plt.show()
+
+    return fig, ax
+
+def event_centers(T, S, color_list=['#000000'], chosen_subtypes = [0],
+        subtype_labels = None, orderBy = None, width=1200, height=900):
+    
+    """
+    Creates event centers box plots for multiple subtypes
+    
+    :param labels:
+    :param pi0_mean:
+    :param evn_full:
+    :param evn:
+    :param subtypes: a list with the names of the subtypes
+    :param chosen_subtypes: a list with names of the subtypes to visualize
+    :param orderBy: string, name of the subtype to order the boxplots by 
+    :param width: chosen width of the returned plot
+    :param height: chosen height of the returned plot
+    :param color_list: a list with color names corresponding to each subtype, len(color_list) = len(subtypes). Preferably hex values
+    :return: plotly box figure
+    """
+
+    labels = T.biomarker_labels 
+    #pi0_mean = T.sequence_model['ordering']
+    #evn_full = T.sequence_model['event_centers']
+    evn = []
+    for b in range(T.bootstrap_repetitions):
+        evn_this = []
+        for c in chosen_subtypes:
+            evn_this.append(T.bootstrap_sequence_model[b]['event_centers'][c])
+        evn.append(evn_this)
+
+    unique_subtypes = np.unique(S['subtypes'][~np.isnan(S['subtypes'])])
+    if subtype_labels is None:
+        subtype_labels = []
+        unique_subtypes = unique_subtypes[np.asarray(chosen_subtypes)]
+        for i in range(len(unique_subtypes)):
+            subtype_labels.append('Subtype '+str(int(unique_subtypes[i])))
+    
+    if orderBy is None:
+        orderBy = subtype_labels[0]
+        
+    num_subtypes = len(subtype_labels)
+    #if len(color_list)!=len(subtype_labels):
+    #    return f'Wrong number of colors specified. Please provide a color for each of {num_subtypes} subtypes.'
+    
+    color_map = {subtype_labels[i]: color_list[i] for i in range(len(color_list))}
+
+    region = labels*len(subtype_labels)*len(evn) 
+    s = subtype_labels*len(labels)*len(evn)
+    score=[]
+    for i in range(len(evn)):
+            for j in range(len(subtype_labels)):
+                for k in range(len(labels)):
+                    score.append(evn[i][j][k])
+                    
+    dic = {'Region':region, 'Subtype':s, 'score':score}
+    df = pd.DataFrame(dic)
+    
+    chosen_subtypes = ['Subtype 0']
+    fig = px.box(df[df['Subtype'].isin(chosen_subtypes)], 
+                 x="score", 
+                 y="Region", 
+                 color = 'Subtype',
+                 color_discrete_map=color_map,
+                 title=f"Event Centers", width=width, height=height, 
+                 labels={"score": "Disease Stage",  "Region": "Region Names"})
+    
+    df_sortBy = df[df['Subtype']==orderBy].drop(columns=['Subtype'])
+
+    df_sorted = df_sortBy.groupby('Region').quantile(q=0.5).sort_values(by='score', ascending = True)
+    labels_sorted = list(df_sorted.index)
+    labels_sorted.reverse()
+
+    fig.update_yaxes(categoryarray=labels_sorted)
+    fig.update_yaxes(categoryorder="array")
+    
+    fig.update_layout(xaxis = dict(tickmode = 'linear', 
+                                   tick0 = 0.0, 
+                                   dtick = 0.1),
+                      title_font_size=24,
+                      hovermode=False)
+    fig.write_html('event_centers_figure_.html', auto_open=True)
+
+
+    return fig

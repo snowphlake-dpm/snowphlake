@@ -16,7 +16,9 @@ setuptools.setup(
       'pandas',
       'scikit-learn',
       'scipy',
-      'matplotlib'
+      'matplotlib',
+      'rpy2',
+      'plotly'
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
