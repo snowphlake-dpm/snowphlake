@@ -17,7 +17,10 @@ class subtyping_model():
             n_optsubtypes = None, n_nmfruns = 50, \
             subtyping_measure = 'zscore', model_selection = None, n_splits = 10, n_cpucores = None):
 
-        self.multiprocessing = 1
+        ## Flag to multiprocess different NMF calls. 
+        # This doesnt work in Snellius (HPC), but works in normal linux computer
+        self.multiprocessing = 0 
+        
         self.random_seed = random_seed
         self.n_maxsubtypes = n_maxsubtypes 
         self.n_optsubtypes = n_optsubtypes 
