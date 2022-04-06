@@ -8,13 +8,16 @@ from rpy2.robjects.packages import STAP
 import numpy as np 
 from sklearn.model_selection import StratifiedKFold 
 nmf = importr('NMF')
+from multiprocessing.pool import ThreadPool as Pool
+import multiprocessing as mp 
 
 class subtyping_model():
 
     def __init__(self, random_seed = 42, n_maxsubtypes = 1, \
             n_optsubtypes = None, n_nmfruns = 50, \
-            subtyping_measure = 'zscore', model_selection = None, n_splits = 10):
+            subtyping_measure = 'zscore', model_selection = None, n_splits = 10, n_cpucores = None):
 
+        self.multiprocessing = 1
         self.random_seed = random_seed
         self.n_maxsubtypes = n_maxsubtypes 
         self.n_optsubtypes = n_optsubtypes 
@@ -40,6 +43,10 @@ class subtyping_model():
             self.params_normalize = None
         self.n_splits = n_splits # used only when model_selection is crossval 
 
+        if n_cpucores is not None:
+            self.n_cpucores = n_cpucores
+        else:
+            self.n_cpucores = mp.cpu_count()
         return
 
     def subtype_predicting_submodule(self, data_this, flag_randomize):
@@ -140,48 +147,78 @@ class subtyping_model():
 
             return subtypes, weight_subtypes, subtype_metrics_AD
 
-        def _select_opt_n(data,diagnosis):
-            print('Evaluating the optimum number of subtypes.')
-            for n_subs in range(1,self.n_maxsubtypes+1):
-                print ('Checking for N =', n_subs)
-                if self.model_selection == 'full':
-                    if self.subtyping_measure == 'zscore':
-                        _, _, metrics = _zscore_subtyping(data, diagnosis, n_subs, flag_randomize = False)
-                        _, _, metrics_random = _zscore_subtyping(data, diagnosis, n_subs, flag_randomize = True)
-                    else:
-                        _, _, metrics = _likelihood_subtyping(data, diagnosis, n_subs, flag_randomize = False)
-                        _, _, metrics_random = _likelihood_subtyping(data, diagnosis, n_subs, flag_randomize = True)
-                    self.rss_data[n_subs-1] = metrics[0]
-                    self.rss_random[n_subs-1] = metrics_random[0]
-                    self.silhouette_score[n_subs-1] = metrics[2]
-                    self.cophenetic_correlation[n_subs-1] = metrics[3]
-                elif self.model_selection == 'crossval':
-                        skf = StratifiedKFold(n_splits=self.n_splits)
-                        cnt = -1
-                        rss_data_folds = np.zeros(self.n_splits)
-                        rss_random_folds = np.zeros(self.n_splits)
-                        sil_score_folds = np.zeros(self.n_splits)
-                        coph_corr_folds = np.zeros(self.n_splits)
-                        for train_index, val_index in skf.split(data,diagnosis):
-                            cnt = cnt+1
-                            data_train, data_validate = data[train_index,:], data[val_index,:]
-                            diagnosis_train, diagnosis_validate = diagnosis[train_index], diagnosis[val_index]
-                            if self.subtyping_measure == 'zscore':
-                                _, _, metrics = _zscore_subtyping(data_train, diagnosis_train, n_subs, flag_randomize = False, data_validation = data_validate, diagnosis_validation = diagnosis_validate)
-                                _, _, metrics_random = _zscore_subtyping(data_train, diagnosis_train, n_subs, flag_randomize = True, data_validation = data_validate, diagnosis_validation = diagnosis_validate)
-                            else:
-                                _, _, metrics = _likelihood_subtyping(data_train, diagnosis_train, n_subs, flag_randomize = False, data_validation = data_validate, diagnosis_validation = diagnosis_validate)
-                                _, _, metrics_random = _likelihood_subtyping(data_train, diagnosis_train, n_subs, flag_randomize = True, data_validation = data_validate, diagnosis_validation = diagnosis_validate)
-                            rss_data_folds[cnt] = metrics[0]
-                            rss_random_folds[cnt] = metrics_random[0]
-                            sil_score_folds[cnt] = metrics[2]
-                            coph_corr_folds[cnt] = metrics[3]
-                        self.rss_data[n_subs-1] = np.mean(rss_data_folds)
-                        self.rss_random[n_subs-1] = np.mean(rss_random_folds)
-                        self.silhouette_score[n_subs-1] = np.mean(sil_score_folds)
-                        self.cophenetic_correlation[n_subs-1] = np.mean(coph_corr_folds)
+        def _model_selection_full(n_subs):
+            print ('Evaluating for N =', n_subs)
+            if self.model_selection == 'full':
+                if self.subtyping_measure == 'zscore':
+                    _, _, metrics = _zscore_subtyping(data, diagnosis, n_subs, flag_randomize = False)
+                    _, _, metrics_random = _zscore_subtyping(data, diagnosis, n_subs, flag_randomize = True)
+                else:
+                    _, _, metrics = _likelihood_subtyping(data, diagnosis, n_subs, flag_randomize = False)
+                    _, _, metrics_random = _likelihood_subtyping(data, diagnosis, n_subs, flag_randomize = True)
+                self.rss_data[n_subs-1] = metrics[0]
+                self.rss_random[n_subs-1] = metrics_random[0]
+                self.silhouette_score[n_subs-1] = metrics[2]
+                self.cophenetic_correlation[n_subs-1] = metrics[3]            
+            return
+        
+        def _model_selection_crossval(n_subs):
+            print ('Evaluating for N =', n_subs)
+            skf = StratifiedKFold(n_splits=self.n_splits)
+            cnt = -1
+            rss_data_folds = np.zeros(self.n_splits)
+            rss_random_folds = np.zeros(self.n_splits)
+            sil_score_folds = np.zeros(self.n_splits)
+            coph_corr_folds = np.zeros(self.n_splits)
+            for train_index, val_index in skf.split(data,diagnosis):
+                cnt = cnt+1
+                data_train, data_validate = data[train_index,:], data[val_index,:]
+                diagnosis_train, diagnosis_validate = diagnosis[train_index], diagnosis[val_index]
+                if self.subtyping_measure == 'zscore':
+                    _, _, metrics = _zscore_subtyping(data_train, diagnosis_train, n_subs, flag_randomize = False, data_validation = data_validate, diagnosis_validation = diagnosis_validate)
+                    _, _, metrics_random = _zscore_subtyping(data_train, diagnosis_train, n_subs, flag_randomize = True, data_validation = data_validate, diagnosis_validation = diagnosis_validate)
+                else:
+                    _, _, metrics = _likelihood_subtyping(data_train, diagnosis_train, n_subs, flag_randomize = False, data_validation = data_validate, diagnosis_validation = diagnosis_validate)
+                    _, _, metrics_random = _likelihood_subtyping(data_train, diagnosis_train, n_subs, flag_randomize = True, data_validation = data_validate, diagnosis_validation = diagnosis_validate)
+                rss_data_folds[cnt] = metrics[0]
+                rss_random_folds[cnt] = metrics_random[0]
+                sil_score_folds[cnt] = metrics[2]
+                coph_corr_folds[cnt] = metrics[3]
+            self.rss_data[n_subs-1] = np.mean(rss_data_folds)
+            self.rss_random[n_subs-1] = np.mean(rss_random_folds)
+            self.silhouette_score[n_subs-1] = np.mean(sil_score_folds)
+            self.cophenetic_correlation[n_subs-1] = np.mean(coph_corr_folds)
+            return
 
-            flag_more = -np.diff(self.rss_data) > -np.diff(self.rss_random)
+        def _select_opt_n():
+
+            print('Evaluating the optimum number of subtypes.')
+            if self.multiprocessing == 1:
+                pool = Pool(self.n_cpucores)
+                inputs = []
+                for n_subs in range(1,self.n_maxsubtypes+1):
+                    inputs.append(n_subs)
+                #for n_subs in range(1,self.n_maxsubtypes+1):
+                if self.model_selection == 'full':
+                    #_model_selection_full(n_subs)
+                    outputs = pool.map(_model_selection_full, inputs)
+                elif self.model_selection == 'crossval':
+                    #_model_selection_crossval(n_subs)
+                    outputs = pool.map(_model_selection_crossval, inputs)
+                
+                _ = list(outputs)
+                pool.close()
+                pool.join()
+            else:
+                for n_subs in range(1,self.n_maxsubtypes+1):
+                    if self.model_selection == 'full':
+                        _model_selection_full(n_subs)
+                    elif self.model_selection == 'crossval':
+                        _model_selection_crossval(n_subs)
+
+            mean_rand = np.mean(-np.diff(self.rss_random))
+            std_rand = np.std(-np.diff(self.rss_random))
+            flag_more = -np.diff(self.rss_data) > (mean_rand + 2*std_rand)
             idx_select = np.where(flag_more == True)[0]
             if len(idx_select)==0:
                 self.n_optsubtypes = 1
@@ -194,6 +231,7 @@ class subtyping_model():
         
         def _likelihood_subtyping(data,diagnosis, n_subtypes,
             flag_randomize = False, data_validation = None, diagnosis_validation = None):
+            
             diagnosis_noncn  = diagnosis[diagnosis!=1]
             idx_ad = diagnosis_noncn == 3
             #TODO: Check performance with and without log likelihood
@@ -217,7 +255,6 @@ class subtyping_model():
 
         def _zscore_subtyping(data, diagnosis, n_subtypes,
             flag_randomize = False, data_validation = None, diagnosis_validation = None):
-
             idx_ad = diagnosis == 3
             idx_cn = diagnosis == 1
             data_cn = data[idx_cn,:]
@@ -257,7 +294,7 @@ class subtyping_model():
             return subtypes, weight_subtypes, subtype_metrics
         
         if self.n_optsubtypes is None:
-            _select_opt_n(data,diagnosis)
+            _select_opt_n()
         
         print('Estimating subtypes for N =', self.n_optsubtypes)
         if self.subtyping_measure == 'zscore':

@@ -120,7 +120,7 @@ class timeline():
                 # Snowphlake with zscore
                 sm = subtyping_model(self.random_seed, self.n_maxsubtypes,
                     self.n_optsubtypes,self.n_nmfruns, self.subtyping_measure,
-                    self.model_selection, self.n_splits)
+                    self.model_selection, self.n_splits, self.n_cpucores)
                 subtypes, w_subtypes = sm.fit(data_corrected,diagnosis)
                 self.n_optsubtypes = sm.n_optsubtypes
                 mm = mixture_model(data_corrected.shape[1],
@@ -177,7 +177,7 @@ class timeline():
                 p_yes = mm_init.fit(data_corrected,diagnosis,get_likelihood = True)
                 sm = subtyping_model(self.random_seed, self.n_maxsubtypes,
                     self.n_optsubtypes,self.n_nmfruns, self.subtyping_measure,
-                    self.model_selection, self.n_splits)
+                    self.model_selection, self.n_splits, self.n_cpucores)
                 subtypes, w_subtypes = sm.fit(p_yes[0],diagnosis)
                 self.n_optsubtypes = sm.n_optsubtypes
                 mm = mixture_model(data_corrected.shape[1],
@@ -228,57 +228,53 @@ class timeline():
         self.subtyping_model = sm 
         print('Timeline estimated.')
         if subtypes is None:
-            subtypes = subjects_derived_info['subtypes'].copy()
+            if self.estimate_subtypes == True:
+                subtypes = subjects_derived_info['subtypes'].copy()
 
-        def _estimate_uncertainty(i):
+        def _estimate_uncertainty(i,estimate_subtypes):
             data_resampled, diagnosis_resampled, subtypes_resampled = \
                 utils.bootstrap_resample(data,diagnosis.copy(),subtypes,self.random_seed + i)
-            orig_val = self.estimate_subtypes
-            self.estimate_subtypes = False
+
             pi0_resampled,event_centers_resampled, mm_resampled, sig0_resampled, _,\
                 _ = self.estimate_instance(data_resampled,
                 diagnosis_resampled, subtypes_resampled)
-            self.estimate_subtypes = orig_val
+            
             self.bootstrap_mixture_model[i] = mm_resampled
             self.bootstrap_sequence_model[i]['ordering'] = pi0_resampled
             self.bootstrap_sequence_model[i]['event_centers'] = event_centers_resampled 
             self.bootstrap_sequence_model[i]['mallows_spread'] = sig0_resampled
             subjects_derived_info_resampled_i = timeline.predict(self, data,\
-                subtypes = subtypes, iter_bootstrap = i, diagnosis = diagnosis)
-                        
-            return [i, subjects_derived_info_resampled_i]
+                subtypes = subtypes, iter_bootstrap = i, estimate_subtypes = estimate_subtypes, diagnosis = diagnosis)            
+            return subjects_derived_info_resampled_i
 
         def _strore_result(output):
+            subjects_derived_info_resampled = [[] for x in range(self.bootstrap_repetitions)]
             for x in range(len(output)):
-                output_this = output[x]
-                i, subjects_derived_info_resampled_i = output_this[0], output_this[1]
-
-                subjects_derived_info_resampled[i] = subjects_derived_info_resampled_i.copy()
-            return 
+                subjects_derived_info_resampled[x] = output[x].copy()
+            return subjects_derived_info_resampled
 
         if self.estimate_uncertainty == True:
             print('Estimating uncertainty.')
+            orig_val = self.estimate_subtypes
+            self.estimate_subtypes = False
             
-            #pool = Pool(self.n_cpucores * 2)
-            #inputs = []
-            global subjects_derived_info_resampled
-            subjects_derived_info_resampled = [[] for x in range(self.bootstrap_repetitions)]
-            outputs = []
+            pool = Pool(self.n_cpucores * 2)
+            inputs = []
             for i in range(self.bootstrap_repetitions):
-                #inputs.append(i)
-                output = _estimate_uncertainty(i)
-                outputs.append(output)
-            
-            _strore_result(outputs)
-            #pool.map_async(_estimate_uncertainty, inputs, callback=_strore_result)
-            #pool.close()
-            #pool.join()
+                inputs.append([i,orig_val])
+
+            outputs = pool.starmap(_estimate_uncertainty, inputs)
+            subjects_derived_info_resampled = _strore_result(list(outputs))
+            pool.close()
+            pool.join()
+            self.estimate_subtypes = orig_val
         else:
             subjects_derived_info_resampled = []
 
         return subjects_derived_info, subjects_derived_info_resampled
     
-    def predict(self, data, subtypes = None, iter_bootstrap = None, diagnosis = None):
+    def predict(self, data, subtypes = None, iter_bootstrap = None, diagnosis = None,
+        estimate_subtypes = False):
         ## This is currently non-functional
         if iter_bootstrap is None:
             cf = self.confounding_factors_model
@@ -297,7 +293,6 @@ class timeline():
             'atypicality': np.zeros(data.shape[0]) + np.nan, 
             'atypicality_all': np.zeros((data.shape[0],data.shape[1]-1)) + np.nan
         }
-
         if self.confounding_factors is not None:
             #TODO: confounding factor predict function 
             data_corrected = cf.predict(data)
@@ -312,7 +307,7 @@ class timeline():
             idx_noncn = np.ones(data.shape[0],dtype=bool)
         if type(mix) == list:
             p_yes = mix[0].predict_posterior(data_corrected, None, get_likelihood = True)
-        if self.estimate_subtypes == True:
+        if estimate_subtypes == True:
             if self.subtyping_measure=='zscore':
                 subtypes, weights = sub.predict(data_corrected)
                 p_yes = mix.predict_posterior(data_corrected, weights)
@@ -321,11 +316,13 @@ class timeline():
                 p_yes = mix[1].predict_posterior(data_corrected, weights)
             subjects_derived_info['subtypes_weights'][idx_noncn,:] = weights[idx_noncn,:]
         elif subtypes is not None:
-            p_subtypes = np.zeros((subtypes.shape[0],self.n_optsubtypes))
+            p_subtypes = np.zeros((subtypes.shape[0],self.n_optsubtypes)) + np.nan 
             unique_subtypes = np.unique(subtypes[~np.isnan(subtypes)])
             for i in range(self.n_optsubtypes):
                 idx_i = subtypes == unique_subtypes[i]
+                p_subtypes[idx_i,:] = 0
                 p_subtypes[idx_i,i] = 1
+                
             p_yes = mix.predict_posterior(data_corrected, p_subtypes)
         else:
             p_yes = mix.predict_posterior(data_corrected, None)
