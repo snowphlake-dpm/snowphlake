@@ -248,11 +248,11 @@ class timeline():
 
             for j in range(len(self.biomarker_labels)):
                 mu = self.bootstrap_mixture_model[i].cases[j]['mu'].copy()
-                self.bootstrap_mixture_model[i].cases[j]['mu'] = mu[idx_map]
+                self.bootstrap_mixture_model[i].cases[j]['mu'] = mu[:,idx_map]
                 std = self.bootstrap_mixture_model[i].cases[j]['std'].copy()
-                self.bootstrap_mixture_model[i].cases[j]['std'] = std[idx_map]
+                self.bootstrap_mixture_model[i].cases[j]['std'] = std[:,idx_map]
                 w = self.bootstrap_mixture_model[i].cases[j]['weights'].copy()
-                self.bootstrap_mixture_model[i].cases[j]['weights'] = w[idx_map]
+                self.bootstrap_mixture_model[i].cases[j]['weights'] = w[:,idx_map]
 
             for j in range(Hi.shape[1]):
                 ordering = self.bootstrap_sequence_model[i]['ordering'].copy()
