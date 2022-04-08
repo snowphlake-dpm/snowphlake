@@ -18,6 +18,8 @@ def subtype_metrics(T):
     ax[0].set_ylabel('Change in RSS')
     ax[0].grid(visible=True,linestyle='--')
     ax[0].legend(['Data','Random'])
+    m = np.max(-np.diff(T.subtyping_model.rss_random))
+    ax[0].plot([2,T.n_maxsubtypes],[m,m],linestyle='dashed')
 
     ax[1].set_title('Silhouette score (SS)')
     ax[1].plot(range(1,1+T.n_maxsubtypes),T.subtyping_model.silhouette_score)

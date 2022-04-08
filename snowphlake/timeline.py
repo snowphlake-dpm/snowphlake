@@ -76,6 +76,7 @@ class timeline():
             self.bootstrap_sequence_model = [{'ordering': None, 
                             'event_centers': None,
                             'mallows_spread': None} for x in range(self.bootstrap_repetitions)]
+            self.bootstrap_subtyping_model = [[]for x in range(self.bootstrap_repetitions)]
 
     def estimate_instance(self, data, diagnosis, subtypes):
         if self.diagnostic_labels is not None:
@@ -231,18 +232,57 @@ class timeline():
             if self.estimate_subtypes == True:
                 subtypes = subjects_derived_info['subtypes'].copy()
 
+        def _reorder_subtype_params(i):
+            H = self.subtyping_model.trained_params['Basis'][0]
+            Hi = self.bootstrap_subtyping_model[i].trained_params['Basis'][0].copy()
+
+            basis_dist = np.zeros((H.shape[1],H.shape[1]))
+            for j in range(H.shape[1]):
+                for k in range(Hi.shape[1]):
+                    basis_dist[j,k] = np.sqrt(np.sum((H[:,j] - Hi[:,k])**2))
+
+            idx_map = np.argmin(basis_dist,axis=1)
+
+            for j in range(Hi.shape[1]):
+                self.bootstrap_subtyping_model[i].trained_params['Basis'][0][:,j] = Hi[:,idx_map[j]]
+
+            for j in range(len(self.biomarker_labels)):
+                mu = self.bootstrap_mixture_model[i].cases[j]['mu'].copy()
+                self.bootstrap_mixture_model[i].cases[j]['mu'] = mu[idx_map]
+                std = self.bootstrap_mixture_model[i].cases[j]['std'].copy()
+                self.bootstrap_mixture_model[i].cases[j]['std'] = std[idx_map]
+                w = self.bootstrap_mixture_model[i].cases[j]['weights'].copy()
+                self.bootstrap_mixture_model[i].cases[j]['weights'] = w[idx_map]
+
+            for j in range(Hi.shape[1]):
+                ordering = self.bootstrap_sequence_model[i]['ordering'].copy()
+                event_centers = self.bootstrap_sequence_model[i]['event_centers'].copy()
+                mallows_spread = self.bootstrap_sequence_model[i]['mallows_spread'].copy()
+
+                for k in range(H.shape[1]):
+                    self.bootstrap_sequence_model[i]['ordering'][k] = ordering[idx_map[k]].copy()
+                    self.bootstrap_sequence_model[i]['event_centers'][k] = event_centers[idx_map[k]].copy()
+                    self.bootstrap_sequence_model[i]['mallows_spread'][k] = mallows_spread[idx_map[k]].copy()
+            
+            return
+
         def _estimate_uncertainty(i,estimate_subtypes):
             data_resampled, diagnosis_resampled, subtypes_resampled = \
                 utils.bootstrap_resample(data,diagnosis.copy(),subtypes,self.random_seed + i)
 
-            pi0_resampled,event_centers_resampled, mm_resampled, sig0_resampled, _,\
+            pi0_resampled,event_centers_resampled, mm_resampled, sig0_resampled, sm_resampled,\
                 _ = self.estimate_instance(data_resampled,
                 diagnosis_resampled, subtypes_resampled)
-            
+
             self.bootstrap_mixture_model[i] = mm_resampled
+            self.bootstrap_subtyping_model[i] = sm_resampled
             self.bootstrap_sequence_model[i]['ordering'] = pi0_resampled
             self.bootstrap_sequence_model[i]['event_centers'] = event_centers_resampled 
             self.bootstrap_sequence_model[i]['mallows_spread'] = sig0_resampled
+
+            if estimate_subtypes == True:
+                _reorder_subtype_params(i)
+
             subjects_derived_info_resampled_i = timeline.predict(self, data,\
                 subtypes = subtypes, iter_bootstrap = i, estimate_subtypes = estimate_subtypes, diagnosis = diagnosis)            
             return subjects_derived_info_resampled_i
@@ -255,19 +295,22 @@ class timeline():
 
         if self.estimate_uncertainty == True:
             print('Estimating uncertainty.')
-            orig_val = self.estimate_subtypes
-            self.estimate_subtypes = False
+            #orig_val = self.estimate_subtypes
+            #self.estimate_subtypes = False
             
-            pool = Pool(self.n_cpucores * 2)
-            inputs = []
+            #pool = Pool(self.n_cpucores * 2)
+            #inputs = []
+            outputs = []
             for i in range(self.bootstrap_repetitions):
-                inputs.append([i,orig_val])
-
-            outputs = pool.starmap(_estimate_uncertainty, inputs)
+                #inputs.append([i,orig_val])
+                print([i],end='', flush=True)
+                output_this = _estimate_uncertainty(i, self.estimate_subtypes)
+                outputs.append(output_this)
+            #outputs = pool.starmap(_estimate_uncertainty, inputs)
             subjects_derived_info_resampled = _strore_result(list(outputs))
-            pool.close()
-            pool.join()
-            self.estimate_subtypes = orig_val
+            #pool.close()
+            #pool.join()
+            #self.estimate_subtypes = orig_val
         else:
             subjects_derived_info_resampled = []
 
