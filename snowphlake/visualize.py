@@ -75,51 +75,47 @@ def subtypes_piechart(S,diagnosis,diagnostic_labels_for_plotting,title = None,su
 
     return fig, ax
 
-def event_centers(T, S, color_list=['#000000'], chosen_subtypes = [0],
+def event_centers(T, color_list=['#000000'], chosen_subtypes = None,
         subtype_labels = None, orderBy = None, width=1200, height=900):
     
     """
     Creates event centers box plots for multiple subtypes
     
-    :param labels:
-    :param pi0_mean:
-    :param evn_full:
-    :param evn:
-    :param subtypes: a list with the names of the subtypes
+    :param T: Timeline object
+    :param color_list: a list with color names corresponding to each subtype, len(color_list) = len(subtypes). Preferably hex values
     :param chosen_subtypes: a list with names of the subtypes to visualize
-    :param orderBy: string, name of the subtype to order the boxplots by 
+    :param subtype_lables: a list with names of the subtype labels 
+    :param orderBy: string, name of the subtype to order the boxplots by; default None
     :param width: chosen width of the returned plot
     :param height: chosen height of the returned plot
-    :param color_list: a list with color names corresponding to each subtype, len(color_list) = len(subtypes). Preferably hex values
     :return: plotly box figure
     """
-
-    labels = T.biomarker_labels 
-    #pi0_mean = T.sequence_model['ordering']
-    #evn_full = T.sequence_model['event_centers']
-    evn = []
-    for b in range(T.bootstrap_repetitions):
-        evn_this = []
-        for c in chosen_subtypes:
-            evn_this.append(T.bootstrap_sequence_model[b]['event_centers'][c])
-        evn.append(evn_this)
 
     unique_subtypes = np.unique(S['subtypes'][~np.isnan(S['subtypes'])])
     if subtype_labels is None:
         subtype_labels = []
-        unique_subtypes = unique_subtypes[np.asarray(chosen_subtypes)]
         for i in range(len(unique_subtypes)):
             subtype_labels.append('Subtype '+str(int(unique_subtypes[i])))
-    
+                
     if orderBy is None:
         orderBy = subtype_labels[0]
+                
+    if chosen_subtypes is None:
+        chosen_subtypes = subtype_labels
         
     num_subtypes = len(subtype_labels)
-    #if len(color_list)!=len(subtype_labels):
-    #    return f'Wrong number of colors specified. Please provide a color for each of {num_subtypes} subtypes.'
     
+    labels = T.biomarker_labels 
+    
+    evn = []
+    for b in range(T.bootstrap_repetitions):
+        evn_this = []
+        for c in range(num_subtypes): # chosen_subtypes
+            evn_this.append(T.bootstrap_sequence_model[b]['event_centers'][c])
+        evn.append(evn_this)
+            
     color_map = {subtype_labels[i]: color_list[i] for i in range(len(color_list))}
-
+    
     region = labels*len(subtype_labels)*len(evn) 
     s = subtype_labels*len(labels)*len(evn)
     score=[]
@@ -130,8 +126,7 @@ def event_centers(T, S, color_list=['#000000'], chosen_subtypes = [0],
                     
     dic = {'Region':region, 'Subtype':s, 'score':score}
     df = pd.DataFrame(dic)
-    
-    chosen_subtypes = ['Subtype 0']
+        
     fig = px.box(df[df['Subtype'].isin(chosen_subtypes)], 
                  x="score", 
                  y="Region", 
