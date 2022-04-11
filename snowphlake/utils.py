@@ -35,9 +35,18 @@ def bootstrap_resample(data,diagnosis,subtypes,random_seed):
             resample(data,diagnosis,subtypes, random_state = random_seed, \
                 stratify = diagnosis)
     else:
-        data_resampled, diagnosis_resampled = \
-            resample(data,diagnosis, random_state = random_seed, \
-                stratify = diagnosis)
+        idx_nonAD = diagnosis != 3
+        data_resampled1, diagnosis_resampled1 = \
+            resample(data[idx_nonAD,:],diagnosis[idx_nonAD], random_state = random_seed, \
+                stratify = diagnosis[idx_nonAD])
+        
+        idx_AD = diagnosis == 3
+        data_resampled2, diagnosis_resampled2 = \
+            resample(data[idx_AD,:],diagnosis[idx_AD], random_state = random_seed, \
+                stratify = subtypes[idx_AD])
+        diagnosis_resampled = np.concatenate((diagnosis_resampled1,diagnosis_resampled2))
+        data_resampled = np.concatenate((data_resampled1,data_resampled2))
+
         subtypes_resampled = None 
         
     return data_resampled, diagnosis_resampled, subtypes_resampled
