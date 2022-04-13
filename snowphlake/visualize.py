@@ -79,8 +79,7 @@ def event_centers(T, S, color_list=['#000000'], chosen_subtypes = None,
         subtype_labels = None, orderBy = None, width=1200, height=900):
     
     """
-    Creates event centers box plots for multiple subtypes
-    
+    Creates event centers box plots for multiple subtypes 
     :param T: Timeline object
     :param S:
     :param color_list: a list with color names corresponding to each subtype, len(color_list) = len(subtypes). Preferably hex values
