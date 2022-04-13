@@ -327,7 +327,7 @@ class timeline():
         else:
             cf = self.confounding_factors_model
             mix = self.bootstrap_mixture_model[iter_bootstrap]
-            sub = self.subtyping_model
+            sub = self.bootstrap_subtyping_model[iter_bootstrap]
             seq = self.bootstrap_sequence_model[iter_bootstrap]
         subjects_derived_info = {
             'staging': np.zeros(data.shape[0]) + np.nan ,
