@@ -75,13 +75,14 @@ def subtypes_piechart(S,diagnosis,diagnostic_labels_for_plotting,title = None,su
 
     return fig, ax
 
-def event_centers(T, color_list=['#000000'], chosen_subtypes = None,
+def event_centers(T, S, color_list=['#000000'], chosen_subtypes = None,
         subtype_labels = None, orderBy = None, width=1200, height=900):
     
     """
     Creates event centers box plots for multiple subtypes
     
     :param T: Timeline object
+    :param S:
     :param color_list: a list with color names corresponding to each subtype, len(color_list) = len(subtypes). Preferably hex values
     :param chosen_subtypes: a list with names of the subtypes to visualize
     :param subtype_lables: a list with names of the subtype labels 
@@ -96,6 +97,8 @@ def event_centers(T, color_list=['#000000'], chosen_subtypes = None,
         subtype_labels = []
         for i in range(len(unique_subtypes)):
             subtype_labels.append('Subtype '+str(int(unique_subtypes[i])))
+    
+    print(unique_subtypes)
                 
     if orderBy is None:
         orderBy = subtype_labels[0]
