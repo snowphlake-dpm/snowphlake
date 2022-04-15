@@ -5,7 +5,8 @@
 # predict function untested for likelihood based subtyping.
 # get all nmf runs and store in list.
 # get cophenetic score and silhouette score in testing.
-# bootstrap parallelization doesnt work. Take care of the global flag self.estimate_subtypes
+# bootstrap parallelization doesnt work --> Switch from ThreadPool to Pool
+# bootstrap predict crash for EDADS dataset
 
 import numpy as np
 from snowphlake.mixture_model import mixture_model

@@ -205,7 +205,7 @@ class mixture_model():
 
         for k in range(self.n_optsubtypes):
             
-            idx_select = np.argmax(p_subtypes,axis=1)==k
+            idx_select = np.logical_and(np.argmax(p_subtypes,axis=1)==k,np.max(p_subtypes,axis=1)>0)
             idx_select[np.isnan(np.sum(p_subtypes,axis=1))] = 0
             p_yes = np.zeros((np.sum(idx_select),N))
             for i in range(N):
