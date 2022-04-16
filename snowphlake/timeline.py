@@ -374,10 +374,10 @@ class timeline():
         if subtypes is not None:
             subjects_derived_info['subtypes'][idx_noncn] = subtypes[idx_noncn]
             unique_subtypes = np.unique(subtypes[~np.isnan(subtypes)])
-            for i in range(self.n_optsubtypes):
-                pi0_i = seq['ordering'][i]
-                event_centers_i = seq['event_centers'][i]
-                subj_stages_i, atypicality_sum_i, atypicality_all_i = mallows_model.weighted_mallows.predict(pi0_i,event_centers_i, p_yes[i])
+            for i in range(len(unique_subtypes)):
+                pi0_i = seq['ordering'][unique_subtypes[i]]
+                event_centers_i = seq['event_centers'][unique_subtypes[i]]
+                subj_stages_i, atypicality_sum_i, atypicality_all_i = mallows_model.weighted_mallows.predict(pi0_i,event_centers_i, p_yes[unique_subtypes[i]])
                 idx_this = subtypes==unique_subtypes[i]
                 subjects_derived_info['staging'][idx_this] = subj_stages_i
                 #TODO: Atypicality estimated in training and testing are not the same. Rectify this.
