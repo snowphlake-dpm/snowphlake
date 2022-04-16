@@ -271,6 +271,9 @@ class timeline():
             data_resampled, diagnosis_resampled, subtypes_resampled = \
                 utils.bootstrap_resample(data,diagnosis.copy(),subtypes,self.random_seed + i)
 
+            if estimate_subtypes == True:
+                subtypes_resampled = None 
+
             pi0_resampled,event_centers_resampled, mm_resampled, sig0_resampled, sm_resampled,\
                 _ = self.estimate_instance(data_resampled,
                 diagnosis_resampled, subtypes_resampled)
@@ -375,10 +378,11 @@ class timeline():
             subjects_derived_info['subtypes'][idx_noncn] = subtypes[idx_noncn]
             unique_subtypes = np.unique(subtypes[~np.isnan(subtypes)])
             for i in range(len(unique_subtypes)):
-                pi0_i = seq['ordering'][unique_subtypes[i]]
-                event_centers_i = seq['event_centers'][unique_subtypes[i]]
-                subj_stages_i, atypicality_sum_i, atypicality_all_i = mallows_model.weighted_mallows.predict(pi0_i,event_centers_i, p_yes[unique_subtypes[i]])
-                idx_this = subtypes==unique_subtypes[i]
+                u = int(unique_subtypes[i])
+                pi0_i = seq['ordering'][u]
+                event_centers_i = seq['event_centers'][u]
+                subj_stages_i, atypicality_sum_i, atypicality_all_i = mallows_model.weighted_mallows.predict(pi0_i,event_centers_i, p_yes[u])
+                idx_this = subtypes==u
                 subjects_derived_info['staging'][idx_this] = subj_stages_i
                 #TODO: Atypicality estimated in training and testing are not the same. Rectify this.
                 #TODO: Remove atypicality_all

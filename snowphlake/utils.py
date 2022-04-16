@@ -37,17 +37,20 @@ def bootstrap_resample(data,diagnosis,subtypes,random_seed):
         subtypes_resampled = None
     else:
         idx_nonAD = diagnosis != 3
-        data_resampled1, diagnosis_resampled1 = \
-            resample(data[idx_nonAD,:],diagnosis[idx_nonAD], random_state = random_seed, \
+        data_resampled1, diagnosis_resampled1,subtypes_resampled1 = \
+            resample(data[idx_nonAD,:],diagnosis[idx_nonAD],subtypes[idx_nonAD], random_state = random_seed, \
                 stratify = diagnosis[idx_nonAD])
         
         idx_AD = diagnosis == 3
-        data_resampled2, diagnosis_resampled2 = \
-            resample(data[idx_AD,:],diagnosis[idx_AD], random_state = random_seed, \
-                stratify = subtypes[idx_AD])
+        idx_nan = np.isnan(subtypes)
+        subtypes_cp = subtypes.copy()
+        subtypes_cp[idx_nan] = np.nanmax(subtypes)+1
+        data_resampled2, diagnosis_resampled2, subtypes_resampled2 = \
+            resample(data[idx_AD,:],diagnosis[idx_AD],subtypes[idx_AD], random_state = random_seed, \
+                stratify = subtypes_cp[idx_AD])
         diagnosis_resampled = np.concatenate((diagnosis_resampled1,diagnosis_resampled2))
         data_resampled = np.concatenate((data_resampled1,data_resampled2))
 
-        subtypes_resampled = None 
+        subtypes_resampled = np.concatenate((subtypes_resampled1,subtypes_resampled2)) 
         
     return data_resampled, diagnosis_resampled, subtypes_resampled
