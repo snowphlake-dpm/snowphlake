@@ -30,10 +30,11 @@ def bootstrap_resample(data,diagnosis,subtypes,random_seed):
 
     #TODO: Check stratification if diagnosis has nan values 
 
-    if subtypes is not None:
-        data_resampled, diagnosis_resampled, subtypes_resampled = \
-            resample(data,diagnosis,subtypes, random_state = random_seed, \
+    if subtypes is None:
+        data_resampled, diagnosis_resampled = \
+            resample(data,diagnosis, random_state = random_seed, \
                 stratify = diagnosis)
+        subtypes_resampled = None
     else:
         idx_nonAD = diagnosis != 3
         data_resampled1, diagnosis_resampled1 = \
