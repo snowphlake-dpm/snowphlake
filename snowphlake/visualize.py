@@ -76,12 +76,14 @@ def subtypes_piechart(S,diagnosis,diagnostic_labels_for_plotting,title = None,su
     plt.show()
 
     return fig, ax
+    
 
 def event_centers(T, S, color_list=['#000000'], chosen_subtypes = None,
         subtype_labels = None, orderBy = None, width=1200, height=900):
     
     """
-    Creates event centers box plots for multiple subtypes 
+    Creates event centers box plots for multiple subtypes
+    
     :param T: Timeline object
     :param S:
     :param color_list: a list with color names corresponding to each subtype, len(color_list) = len(subtypes). Preferably hex values
@@ -98,9 +100,7 @@ def event_centers(T, S, color_list=['#000000'], chosen_subtypes = None,
         subtype_labels = []
         for i in range(len(unique_subtypes)):
             subtype_labels.append('Subtype '+str(int(unique_subtypes[i])))
-    
-    print(unique_subtypes)
-                
+                    
     if orderBy is None:
         orderBy = subtype_labels[0]
                 
@@ -109,39 +109,56 @@ def event_centers(T, S, color_list=['#000000'], chosen_subtypes = None,
         
     num_subtypes = len(subtype_labels)
     
-    labels = T.biomarker_labels 
+    labels = T.biomarker_labels
+    labels_cleaned = map(lambda x: x.replace("-"," "), labels)
+    labels_cleaned = map(lambda x: x.replace("_"," "), labels_cleaned)
+    labels_cleaned = list(map(lambda x: x.lower(), labels_cleaned))
     
-    evn = []
-    for b in range(T.bootstrap_repetitions):
-        evn_this = []
-        for c in range(num_subtypes): # chosen_subtypes
-            evn_this.append(T.bootstrap_sequence_model[b]['event_centers'][c])
-        evn.append(evn_this)
-            
+    # key: value --> ordering: region_name
+    labels_dict = {num: label for num, label in enumerate(labels_cleaned)}
+    
     color_map = {subtype_labels[i]: color_list[i] for i in range(len(color_list))}
-    
-    region = labels*len(subtype_labels)*len(evn) 
-    s = subtype_labels*len(labels)*len(evn)
-    score=[]
-    for i in range(len(evn)):
-            for j in range(len(subtype_labels)):
-                for k in range(len(labels)):
-                    score.append(evn[i][j][k])
+
+    # EVENT-CENTERS
+    evn = []
+    reg = []
+    subs = []
+
+    for b in range(T.bootstrap_repetitions):
+        for i, s in enumerate(subtype_labels):
+            for r in range(len(labels)):
+                
+                # SUBTYPES 
+                subs.append(s)
+                
+                # EVENT-CENTERS
+                evn.append(T.bootstrap_sequence_model[b]['event_centers'][i][r])
+                
+                # CORRESPONDING REGIONS
+                label_number = T.bootstrap_sequence_model[b]['ordering'][i][r]
+                reg.append(labels_dict[label_number])
+                
                     
-    dic = {'Region':region, 'Subtype':s, 'score':score}
+    dic = {'Region':reg, 'Subtype':subs, 'Score':evn}
     df = pd.DataFrame(dic)
         
     fig = px.box(df[df['Subtype'].isin(chosen_subtypes)], 
-                 x="score", 
+                 x="Score", 
                  y="Region", 
                  color = 'Subtype',
                  color_discrete_map=color_map,
                  title=f"Event Centers", width=width, height=height, 
-                 labels={"score": "Disease Stage",  "Region": "Region Names"})
+                 labels={"Score": "Disease Stage",  "Region": "Region Names"})
     
     df_sortBy = df[df['Subtype']==orderBy].drop(columns=['Subtype'])
 
-    df_sorted = df_sortBy.groupby('Region').quantile(q=0.5).sort_values(by='score', ascending = True)
+    # GROUP BY MEDIAN
+    df_sorted = df_sortBy.groupby('Region').quantile(q=0.5).sort_values(by='Score', ascending = True)
+
+    # GROUP BY MEAN
+#     df_sorted = df_sortBy.groupby('Region').aggregate('mean').sort_values(by='Score', ascending = True)
+
+
     labels_sorted = list(df_sorted.index)
     labels_sorted.reverse()
 
@@ -153,10 +170,12 @@ def event_centers(T, S, color_list=['#000000'], chosen_subtypes = None,
                                    dtick = 0.1),
                       title_font_size=24,
                       hovermode=False)
-    fig.write_html('event_centers_figure_.html', auto_open=True)
+#     fig.write_html('event_centers_figure_.html', auto_open=True)
 
 
     return fig
+
+
 
 
 def mapping_dk(T):
