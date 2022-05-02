@@ -117,7 +117,7 @@ def event_centers(T, S, color_list=['#000000'], chosen_subtypes = None,
     # key: value --> ordering: region_name
     labels_dict = {num: label for num, label in enumerate(labels_cleaned)}
     
-    color_map = {subtype_labels[i]: color_list[i] for i in range(len(color_list))}
+    color_map = {chosen_subtypes[i]: color_list[i] for i in range(len(color_list))}
 
     # EVENT-CENTERS
     evn = []
@@ -156,22 +156,27 @@ def event_centers(T, S, color_list=['#000000'], chosen_subtypes = None,
     df_sorted = df_sortBy.groupby('Region').quantile(q=0.5).sort_values(by='Score', ascending = True)
 
     # GROUP BY MEAN
-#     df_sorted = df_sortBy.groupby('Region').aggregate('mean').sort_values(by='Score', ascending = True)
+    # df_sorted = df_sortBy.groupby('Region').aggregate('mean').sort_values(by='Score', ascending = True)
 
 
     labels_sorted = list(df_sorted.index)
     labels_sorted.reverse()
 
-    fig.update_yaxes(categoryarray=labels_sorted)
-    fig.update_yaxes(categoryorder="array")
+    fig.update_yaxes(categoryarray=labels_sorted, 
+                    categoryorder="array", 
+                    title_font_size = 18, 
+                    tickfont_size=14)
+
+    fig.update_xaxes(title_font_size = 18, 
+                    tickfont_size = 14)
     
     fig.update_layout(xaxis = dict(tickmode = 'linear', 
                                    tick0 = 0.0, 
                                    dtick = 0.1),
-                      title_font_size=24,
+                      title_font_size=34,
                       hovermode=False)
-#     fig.write_html('event_centers_figure_.html', auto_open=True)
 
+    fig.update_layout(legend_font_size=22)
 
     return fig
 
