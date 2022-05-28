@@ -10,17 +10,20 @@ from sklearn.model_selection import StratifiedKFold
 nmf = importr('NMF')
 from multiprocessing.pool import ThreadPool as Pool
 import multiprocessing as mp 
+import sklearn.metrics as metrics
+import nimfa
+from sklearn.covariance import MinCovDet
 
 class subtyping_model():
 
     def __init__(self, random_seed = 42, n_maxsubtypes = 1, \
-            n_optsubtypes = None, n_nmfruns = 50, \
+            n_optsubtypes = None, n_nmfruns = 50, outlier_percentile = 90, \
             subtyping_measure = 'zscore', model_selection = None, n_splits = 10, n_cpucores = None):
 
         ## Flag to multiprocess different NMF calls. 
         # This doesnt work in Snellius (HPC), but works in normal linux computer
-        self.multiprocessing = 0 
-        
+        self.multiprocessing = 0
+        self.outlier_percentile = outlier_percentile
         self.random_seed = random_seed
         self.n_maxsubtypes = n_maxsubtypes 
         self.n_optsubtypes = n_optsubtypes 
@@ -28,7 +31,7 @@ class subtyping_model():
         self.subtyping_measure = subtyping_measure
 
         self.trained_params = {'Basis': None, 'Theta': None,
-                        'normalize': None}
+                        'normalize': None, 'Outlier_Detectors': None}
 
         self.model_selection = model_selection
         if self.model_selection is not None:
@@ -92,20 +95,43 @@ class subtyping_model():
     def fit(self, data, diagnosis):
         
         def _nmf_call(data_ad_R, n_subtypes, i, n_parallel):
-            try:
-                model_subtype_opt = nmf.nmf(data_ad_R, n_subtypes, \
-                            method='nsNMF', nrun=n_parallel, \
-                            seed=self.random_seed+(n_parallel*i))
-                H = np.asarray(ro.r.basis(model_subtype_opt)).copy()
-                theta = np.asarray(ro.r.attributes(ro.r.fit(model_subtype_opt))[0])[0].copy()
-                self.trained_params['Basis'].append(H)
-                self.trained_params['Theta'].append(theta)
-                flag_success = 1
-            except:
-                flag_success = 0
-                model_subtype_opt = []
+            #model_subtype_opt = nmf.nmf(data_ad_R, n_subtypes, \
+            #            method='nsNMF', nrun=n_parallel, \
+            #            seed=self.random_seed+(n_parallel*i))
+            theta = 0.9
+            np.random.RandomState(seed=self.random_seed)
+            model_subtype_opt = nimfa.Nsnmf(np.asarray(data_ad_R),\
+                rank=n_subtypes, max_iter=2000, theta = theta, n_run = n_parallel)
+            _ = model_subtype_opt().distance(metric='kl')
+            H = model_subtype_opt.basis()
+            #H = np.asarray(ro.r.basis(model_subtype_opt)).copy()
+            #theta = np.asarray(ro.r.attributes(ro.r.fit(model_subtype_opt))[0])[0].copy()
+            self.trained_params['Basis'].append(H)
+            self.trained_params['Theta'].append(theta)
+            flag_success = 1
             
             return flag_success, model_subtype_opt        
+
+        def _core_outlierdetection_module(Coefs,labels, n_subtypes):
+            outliers = np.zeros(labels.shape,dtype=bool)
+            mcd_trained_all = []
+            mcd_threshold = []
+            for i in range(n_subtypes):
+                idx_this = labels == i
+                if np.sum(idx_this) > 1:
+                    mcd = MinCovDet(random_state=self.random_seed)
+                    Coefs = np.asarray(Coefs)
+                    Coefs_trans = np.transpose(Coefs)
+                    _ = mcd.fit(Coefs_trans[idx_this,:])
+                    mb = mcd.mahalanobis(Coefs_trans[idx_this,:])
+                    outliers[idx_this] = mb>np.percentile(mb,self.outlier_percentile)
+                    thresh = np.percentile(mb,self.outlier_percentile)
+                else:
+                    mcd = None
+                    thresh = None
+                mcd_trained_all.append(mcd)
+                mcd_threshold.append(thresh)
+            return outliers, mcd_trained_all, mcd_threshold
 
         def _core_subtyping_module(data_ad, n_subtypes, flag_randomize):
             
@@ -118,22 +144,31 @@ class subtyping_model():
             
             self.trained_params['Basis'] = []
             self.trained_params['Theta'] = []
-
+            self.trained_params['Outlier_Detectors'] = []
+            self.trained_params['Outlier_threshold'] = []
             flag_success=0
             cnt = -1
             while flag_success==0:
                 cnt = cnt + 1
                 if n_subtypes==1:
-                    runs = 1
+                    runs = self.n_nmfruns
                     flag_success, model_subtype_opt  = _nmf_call(data_ad_R,n_subtypes,cnt,runs)
                     silhouette_score = 1
                     cophenetic_correlation = 1
                 else:
                     runs = self.n_nmfruns
                     flag_success, model_subtype_opt  = _nmf_call(data_ad_R,n_subtypes,cnt,runs)
-                    S = np.asarray(ro.r.silhouette(model_subtype_opt,what='consensus'))
-                    silhouette_score = S[:,-1].mean()
-                    cophenetic_correlation = np.asarray(ro.r.cophcor(model_subtype_opt))[0]      
+                    #S = np.asarray(ro.r.silhouette(model_subtype_opt,what='consensus'))
+                    labels = model_subtype_opt.coef().argmax(axis=0)
+                    labels = np.asarray(labels).flatten()
+                    outliers, mcd_trained_all, mcd_threshold = _core_outlierdetection_module(model_subtype_opt.coef(), labels, n_subtypes)
+                    silhouette_score = metrics.silhouette_score(data_ad[~outliers,:],labels[~outliers])
+                    #silhouette_score = S[:,-1].mean()
+                    #cophenetic_correlation = np.asarray(ro.r.cophcor(model_subtype_opt))[0]
+                    cophenetic_correlation = model_subtype_opt.coph_cor()
+                    self.trained_params['Outlier_Detectors'] = mcd_trained_all
+                    self.trained_params['Outlier_threshold'] = mcd_threshold 
+
             return silhouette_score,cophenetic_correlation
 
         def _core_subtype_predicting_module(data_ad, data_noncn, n_subtypes, flag_randomize, flag_modelselection = False):
@@ -145,8 +180,20 @@ class subtyping_model():
             weights_R_noncn, _ = self.subtype_predicting_submodule(data_noncn, flag_randomize)
             
             if flag_modelselection is False:
-                weight_subtypes[diagnosis!=1,:] = np.transpose(np.asarray(weights_R_noncn))
-                subtypes[diagnosis!=1] = np.argmax(weight_subtypes[diagnosis!=1,:],axis=1)
+                weights_transposed = np.transpose(np.asarray(weights_R_noncn))
+                weight_subtypes[diagnosis!=1,:] = weights_transposed
+                subtypes_withoutliers = np.argmax(weight_subtypes[diagnosis!=1,:],axis=1)
+                subtypes_withoutliers = subtypes_withoutliers.astype(float)
+                outliers = np.zeros(subtypes_withoutliers.shape,dtype=bool)
+                if n_subtypes > 1:
+                    for i in range(n_subtypes):
+                        idx_this = subtypes_withoutliers == i
+                        mcd = self.trained_params['Outlier_Detectors'][i]
+                        if mcd is not None:
+                            mb = mcd.mahalanobis(weights_transposed[idx_this,:])
+                            outliers[idx_this] = mb > self.trained_params['Outlier_threshold'][i]
+                    subtypes_withoutliers[outliers] = np.nan
+                    subtypes[diagnosis!=1] = subtypes_withoutliers
 
             return subtypes, weight_subtypes, subtype_metrics_AD
 
@@ -201,12 +248,9 @@ class subtyping_model():
                 inputs = []
                 for n_subs in range(1,self.n_maxsubtypes+1):
                     inputs.append(n_subs)
-                #for n_subs in range(1,self.n_maxsubtypes+1):
                 if self.model_selection == 'full':
-                    #_model_selection_full(n_subs)
                     outputs = pool.map(_model_selection_full, inputs)
                 elif self.model_selection == 'crossval':
-                    #_model_selection_crossval(n_subs)
                     outputs = pool.map(_model_selection_crossval, inputs)
                 
                 _ = list(outputs)
@@ -219,9 +263,8 @@ class subtyping_model():
                     elif self.model_selection == 'crossval':
                         _model_selection_crossval(n_subs)
 
-            mean_rand = np.mean(-np.diff(self.rss_random))
-            std_rand = np.std(-np.diff(self.rss_random))
-            flag_more = -np.diff(self.rss_data) > (mean_rand + 2*std_rand)
+            max_rand = np.max(-np.diff(self.rss_random))
+            flag_more = -np.diff(self.rss_data) > max_rand
             idx_select = np.where(flag_more == True)[0]
             if len(idx_select)==0:
                 self.n_optsubtypes = 1
@@ -304,6 +347,15 @@ class subtyping_model():
             subtypes, weight_subtypes, subtype_metrics = _zscore_subtyping(data,diagnosis, self.n_optsubtypes)
         else:
             subtypes, weight_subtypes, subtype_metrics = _likelihood_subtyping(data,diagnosis, self.n_optsubtypes)
+        
+        # check if there is an outlier subtype
+        for i in range(self.n_optsubtypes):
+            if np.sum(np.logical_and(subtypes == i,diagnosis==3)) < 30:
+                print ('Subtype #'+ str(i) +' is an outlier subtype')
+                subtypes[subtypes == i] = np.nan 
+                self.n_optsubtypes = self.n_optsubtypes - 1
+                self.trained_params['Basis'][0] = np.delete(self.trained_params['Basis'][0],obj=i, axis=1)
+                weight_subtypes = np.delete(weight_subtypes,obj=i,axis=1)
         
         if self.rss_data is None:
             self.rss_data = subtype_metrics[0]
