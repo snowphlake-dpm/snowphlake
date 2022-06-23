@@ -23,7 +23,7 @@ class timeline():
     def __init__(self,confounding_factors=None, diagnostic_labels=None,
                     estimate_uncertainty=False, estimate_subtypes = False, 
                     bootstrap_repetitions=100, n_nmfruns = 30, 
-                    subtyping_measure=None, random_seed=42, n_gaussians = 1,
+                    random_seed=42, n_gaussians = 1,
                     n_maxsubtypes = 1, n_optsubtypes = None, model_selection = None,
                     n_splits = 10, n_cpucores = None, outlier_percentile = 90):
 
@@ -40,7 +40,7 @@ class timeline():
             self.bootstrap_repetitions = 0
         self.estimate_subtypes = estimate_subtypes
         if self.estimate_subtypes == True:
-            self.model_selection = model_selection # crossval, full, or None 
+            self.model_selection = model_selection # full, or None 
             self.n_splits = None
             if self.model_selection is not None:
                 n_optsubtypes = None 
@@ -57,10 +57,6 @@ class timeline():
         else:
             self.n_maxsubtypes = None # will be set later
             self.n_optsubtypes = None # will be set later
-        if subtyping_measure is None:
-            self.subtyping_measure='zscore'
-        else:
-            self.subtyping_measure=subtyping_measure # Can be either zscore or likelihood 
         self.n_nmfruns = n_nmfruns
 
         if n_cpucores is not None:
@@ -120,8 +116,7 @@ class timeline():
             subjects_derived_info['atypicality'][diagnosis!=1] = np.asarray(atypicality_sum)
             subjects_derived_info['atypicality_all'][diagnosis!=1,:] = atypicality_all
         else:
-            if np.logical_and(self.estimate_subtypes == True, \
-                    self.subtyping_measure == 'zscore'):
+            if self.estimate_subtypes == True:
                 # Snowphlake with zscore
                 sm = subtyping_model(self.random_seed, self.n_maxsubtypes,
                     self.n_optsubtypes,self.n_nmfruns, self.outlier_percentile,self.subtyping_measure,
@@ -175,42 +170,6 @@ class timeline():
                     pi0.append(pi0_i)
                     event_centers.append(event_centers_i)
                     sig0.append(sig0_i)
-
-            elif np.logical_and(self.estimate_subtypes == True,\
-                    self.subtyping_measure == 'likelihood'):
-                #Snowphlake with likelihood
-                mm_init = mixture_model(data_corrected.shape[1],
-                        self.n_gaussians, 1, self.random_seed)
-                p_yes = mm_init.fit(data_corrected,diagnosis,get_likelihood = True)
-                sm = subtyping_model(self.random_seed, self.n_maxsubtypes,
-                    self.n_optsubtypes,self.n_nmfruns, self.outlier_percentile, self.subtyping_measure,
-                    self.model_selection, self.n_splits, self.n_cpucores)
-                subtypes, w_subtypes = sm.fit(p_yes[0],diagnosis)
-                self.n_optsubtypes = sm.n_optsubtypes
-                mm = mixture_model(data_corrected.shape[1],
-                        self.n_gaussians, self.n_optsubtypes, self.random_seed)
-                p_yes = mm.fit(data_corrected,diagnosis, subtypes)
-                
-                pi0 = []
-                event_centers = []
-                sig0 = []
-                subjects_derived_info['subtypes'] = subtypes 
-                subjects_derived_info['subtypes_weights'] = w_subtypes
-                unique_subtypes = np.unique(subtypes[~np.isnan(subtypes)])
-
-                for i in range(self.n_optsubtypes):
-                    pi0_i, event_centers_i, atypicality_sum_i, atypicality_all_i, sig0_i = \
-                        mallows_model.weighted_mallows.fitMallows(p_yes[i],1-mm.mixing[:,i])
-                    subj_stages_i = mallows_model.weighted_mallows.predict_severity(pi0_i,event_centers_i, p_yes[i])
-
-                    subjects_derived_info['staging'][subtypes==unique_subtypes[i]] = subj_stages_i
-                    subjects_derived_info['atypicality'][subtypes==unique_subtypes[i]] = np.asarray(atypicality_sum_i)
-                    subjects_derived_info['atypicality_all'][subtypes==unique_subtypes[i],:] = atypicality_all_i
-                    
-                    pi0.append(pi0_i)
-                    event_centers.append(event_centers_i)
-                    sig0.append(sig0_i)
-                mm = [mm_init, mm]
 
         return pi0, event_centers, mm, sig0, sm, subjects_derived_info
     
@@ -327,7 +286,7 @@ class timeline():
 
         return subjects_derived_info, subjects_derived_info_resampled
     
-    def predict(self, data, subtypes = None, iter_bootstrap = None, diagnosis = None,
+    def predict(self, data, subtypes = None, unique_subtypes = None, iter_bootstrap = None, diagnosis = None,
         estimate_subtypes = False):
         ## This is currently non-functional
         if iter_bootstrap is None:
@@ -371,11 +330,12 @@ class timeline():
             subjects_derived_info['subtypes_weights'][idx_noncn,:] = weights[idx_noncn,:]
         elif subtypes is not None:
             p_subtypes = np.zeros((subtypes.shape[0],self.n_optsubtypes)) + np.nan 
-            unique_subtypes = np.unique(subtypes[~np.isnan(subtypes)])
+            if unique_subtypes is None:
+                unique_subtypes = np.unique(subtypes[~np.isnan(subtypes)])
             for i in range(len(unique_subtypes)):
                 idx_i = subtypes == unique_subtypes[i]
                 p_subtypes[idx_i,:] = 0
-                p_subtypes[idx_i,int(unique_subtypes[i])] = 1
+                p_subtypes[idx_i,i] = 1
                 
             p_yes = mix.predict_posterior(data_corrected, p_subtypes)
         else:
@@ -383,12 +343,13 @@ class timeline():
 
         if subtypes is not None:
             subjects_derived_info['subtypes'][idx_noncn] = subtypes[idx_noncn]
-            unique_subtypes = np.unique(subtypes[~np.isnan(subtypes)])
+            if unique_subtypes is None:
+                unique_subtypes = np.unique(subtypes[~np.isnan(subtypes)])
             for i in range(len(unique_subtypes)):
                 u = int(unique_subtypes[i])
-                pi0_i = seq['ordering'][u]
-                event_centers_i = seq['event_centers'][u]
-                subj_stages_i, atypicality_sum_i, atypicality_all_i = mallows_model.weighted_mallows.predict(pi0_i,event_centers_i, p_yes[u])
+                pi0_i = seq['ordering'][i]
+                event_centers_i = seq['event_centers'][i]
+                subj_stages_i, atypicality_sum_i, atypicality_all_i = mallows_model.weighted_mallows.predict(pi0_i,event_centers_i, p_yes[i])
                 idx_this = subtypes==u
                 subjects_derived_info['staging'][idx_this] = subj_stages_i
                 #TODO: Atypicality estimated in training and testing are not the same. Rectify this.

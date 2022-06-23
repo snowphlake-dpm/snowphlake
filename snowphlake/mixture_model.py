@@ -80,7 +80,7 @@ class mixture_model():
             p_subtypes = np.ones((data_noncn.shape[0],self.n_optsubtypes))
        
         for k in range(self.n_optsubtypes):
-            idx_select = np.argmax(p_subtypes,axis=1)==k
+            idx_select = np.logical_and(np.max(p_subtypes,axis=1)>0,np.argmax(p_subtypes,axis=1)==k)
             for i in range(N):
                 cnt = 0
                 flag_opt_stop = 0
@@ -89,7 +89,7 @@ class mixture_model():
                     mixing0 = np.copy(self.mixing)
                     if cnt==1:
                         mixing_init = np.copy(mixing0)
-                    bnd_mixing = np.asarray([0.05,0.95])
+                    bnd_mixing = np.asarray([0.01,0.99])
                     bnd_mixing = np.repeat(bnd_mixing[np.newaxis,:],1,axis=0)
                     dnc_i = data_noncn[idx_select,i]
                     idx_notnan = ~np.isnan(dnc_i)
