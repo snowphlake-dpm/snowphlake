@@ -22,10 +22,10 @@ class timeline():
 
     def __init__(self,confounding_factors=None, diagnostic_labels=None,
                     estimate_uncertainty=False, estimate_subtypes = False, 
-                    bootstrap_repetitions=100, n_nmfruns = 30, 
+                    bootstrap_repetitions=100, n_nmfruns = 30, n_nmfruns_perbatch = 10,
                     random_seed=42, n_gaussians = 1,
                     n_maxsubtypes = 1, n_optsubtypes = None, model_selection = None,
-                    n_splits = 10, n_cpucores = None, outlier_percentile = 90):
+                    n_cpucores = None, outlier_percentile = 90):
 
         self.confounding_factors = confounding_factors
         self.diagnostic_labels = diagnostic_labels 
@@ -44,7 +44,6 @@ class timeline():
             self.n_splits = None
             if self.model_selection is not None:
                 n_optsubtypes = None 
-                self.n_splits = n_splits
             else:
                 if n_optsubtypes is None: 
                     print('Error: If model_selection is None, specify n_optsubtypes')
@@ -58,6 +57,7 @@ class timeline():
             self.n_maxsubtypes = None # will be set later
             self.n_optsubtypes = None # will be set later
         self.n_nmfruns = n_nmfruns
+        self.n_nmfruns_perbatch = n_nmfruns_perbatch
 
         if n_cpucores is not None:
             self.n_cpucores = n_cpucores
@@ -119,8 +119,8 @@ class timeline():
             if self.estimate_subtypes == True:
                 # Snowphlake with zscore
                 sm = subtyping_model(self.random_seed, self.n_maxsubtypes,
-                    self.n_optsubtypes,self.n_nmfruns, self.outlier_percentile,self.subtyping_measure,
-                    self.model_selection, self.n_splits, self.n_cpucores)
+                    self.n_optsubtypes,self.n_nmfruns, self.n_nmfruns_perbatch, self.outlier_percentile,
+                    self.model_selection, self.n_cpucores)
                 subtypes, w_subtypes = sm.fit(data_corrected,diagnosis)
                 self.n_optsubtypes = sm.n_optsubtypes
                 mm = mixture_model(data_corrected.shape[1],
