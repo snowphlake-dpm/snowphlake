@@ -1,11 +1,11 @@
 # snowphlake
 Staging NeurOdegeneration With PHenotype informed progression timeLine of biomarKErs
 
-# After cloning, install using pip install -e ./
+### After cloning, install using pip install -e ./
 
 import snowphlake as spl
 
-# A typical call is shown here:
+### A typical call is shown here:
 
 T = spl.timeline(estimate_uncertainty=False, estimate_subtypes = True,
     subtyping_measure = 'zscore',\
@@ -13,8 +13,8 @@ T = spl.timeline(estimate_uncertainty=False, estimate_subtypes = True,
     random_seed=100, n_nmfruns=50000, n_cpucores = 50)
 S, Sboot = T.estimate(data,diagnosis,biomarkers_selected)
 
-# T.sequence_model['ordering'] contains all the predicted orderings of biomarkers
-# T.n_optsubtypes contains the optimum number of subtypes selected
-# S contains all patient-specific information
+### T.sequence_model['ordering'] contains all the predicted orderings of biomarkers
+### T.n_optsubtypes contains the optimum number of subtypes selected
+### S contains all patient-specific information
 
-# Once trained, spl.predict function can be used for the test-set
+### Once trained, spl.predict function can be used for the test-set
