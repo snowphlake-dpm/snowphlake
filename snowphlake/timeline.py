@@ -321,13 +321,9 @@ class timeline():
         if type(mix) == list:
             p_yes = mix[0].predict_posterior(data_corrected, None, get_likelihood = True)
         if estimate_subtypes == True:
-            if self.subtyping_measure=='zscore':
                 subtypes, weights = sub.predict(data_corrected)
                 p_yes = mix.predict_posterior(data_corrected, weights)
-            else:
-                subtypes, weights = sub.predict(p_yes)
-                p_yes = mix[1].predict_posterior(data_corrected, weights)
-            subjects_derived_info['subtypes_weights'][idx_noncn,:] = weights[idx_noncn,:]
+                subjects_derived_info['subtypes_weights'][idx_noncn,:] = weights[idx_noncn,:]
         elif subtypes is not None:
             p_subtypes = np.zeros((subtypes.shape[0],self.n_optsubtypes)) + np.nan 
             if unique_subtypes is None:

@@ -6,7 +6,6 @@ import rpy2.robjects as ro
 rpy2.robjects.numpy2ri.activate()
 from rpy2.robjects.packages import STAP
 import numpy as np 
-nmf = importr('NMF')
 from pathos.multiprocessing import ProcessingPool as Pool
 import sklearn.metrics as metrics
 import nimfa
@@ -48,6 +47,7 @@ class subtyping_model():
         return
 
     def subtype_predicting_submodule(self, data_this, flag_randomize, Basis = None,Theta = None):
+        nmf = importr('NMF')
         dir_path = os.path.dirname(os.path.realpath(__file__))
         with open(dir_path+'/nmfPredict.R', 'r') as f:
             string = f.read()
