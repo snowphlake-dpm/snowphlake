@@ -16,9 +16,10 @@ if (!require("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
 BiocManager::install("Biobase")
 ```
-[2] Install NMF in R:
+[2] Install NMF and nnls in R:
 ```
 install.packages('NMF')
+install.packages('nnls')
 ```
 ### After cloning this repository, install using pip install -e ./
 Check how to use pip within a conda environment: https://stackoverflow.com/a/43729857 
