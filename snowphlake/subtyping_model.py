@@ -129,7 +129,8 @@ class subtyping_model():
             return outliers, mcd_trained_all, mcd_threshold
 
         def _core_subtyping_module(data_ad, n_subtypes, flag_randomize):
-            
+            nmf = importr('NMF')
+
             data_ad_R = ro.r.matrix(np.transpose(data_ad),
                 nrow=data_ad.shape[1],
                 ncol=data_ad.shape[0])
