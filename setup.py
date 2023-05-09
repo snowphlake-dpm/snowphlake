@@ -18,6 +18,8 @@ setuptools.setup(
       'scipy',
       'matplotlib',
       'rpy2',
+      'nimfa',
+      'pathos',
       'plotly'
     ],
     classifiers=[

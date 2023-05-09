@@ -4,4 +4,6 @@ scipy
 scikit-learn
 matplotlib
 rpy2
+pathos
+nimfa
 plotly
