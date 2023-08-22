@@ -10,11 +10,12 @@ from pathos.multiprocessing import ProcessingPool as Pool
 import sklearn.metrics as metrics
 import nimfa
 from sklearn.covariance import MinCovDet
+import scipy.stats 
 
 class subtyping_model():
 
     def __init__(self, random_seed = 42, n_maxsubtypes = 1, \
-            n_optsubtypes = None, n_nmfruns = 50, n_nmfruns_perbatch = 10, outlier_percentile = 95, \
+            n_optsubtypes = None, n_nmfruns = 50, n_nmfruns_perbatch = 10, outlier_percentile = None, \
             model_selection = None, n_cpucores = None):
 
         self.outlier_percentile = outlier_percentile
@@ -119,8 +120,11 @@ class subtyping_model():
                     Coefs_trans = np.transpose(Coefs)
                     _ = mcd.fit(Coefs_trans[idx_this,:])
                     mb = mcd.mahalanobis(Coefs_trans[idx_this,:])
-                    outliers[idx_this] = mb>np.percentile(mb,self.outlier_percentile)
-                    thresh = np.percentile(mb,self.outlier_percentile)
+                    if self.outlier_percentile is not None:
+                        thresh = np.percentile(mb,self.outlier_percentile)
+                    else:
+                        thresh = np.median(mb) + (2*scipy.stats.iqr(mb))
+                    outliers[idx_this] = mb > thresh
                 else:
                     mcd = None
                     thresh = None
@@ -198,6 +202,10 @@ class subtyping_model():
             if flag_modelselection is False:
                 weights_transposed = np.transpose(np.asarray(weights_R_noncn))
                 weight_subtypes[diagnosis!=1,:] = weights_transposed
+
+                subtype_org = np.argmax(weight_subtypes[diagnosis!=1,:],axis=1)
+                subtype_org = subtype_org.astype(float)
+
                 subtypes_withoutliers = np.argmax(weight_subtypes[diagnosis!=1,:],axis=1)
                 subtypes_withoutliers = subtypes_withoutliers.astype(float)
                 outliers = np.zeros(subtypes_withoutliers.shape,dtype=bool)
@@ -211,17 +219,18 @@ class subtyping_model():
                     subtypes_withoutliers[outliers] = np.nan
                     subtypes[diagnosis!=1] = subtypes_withoutliers
 
-            return subtypes, weight_subtypes
+            return subtypes, weight_subtypes, subtype_org
 
         def _model_selection_full(n_subs):
             print ('Evaluating for N =', n_subs)
-            _, _, metrics = _zscore_subtyping(data, diagnosis, n_subs, flag_randomize = False)
-            _, _, metrics_random = _zscore_subtyping(data, diagnosis, n_subs, flag_randomize = True)
+            _, _, metrics, _ = _zscore_subtyping(data, diagnosis, n_subs, flag_randomize = False)
+            _, _, metrics_random, _ = _zscore_subtyping(data, diagnosis, n_subs, flag_randomize = True)
 
             self.rss_data[n_subs-1] = metrics[0]
             self.rss_random[n_subs-1] = metrics_random[0]
             self.silhouette_score[n_subs-1] = metrics[1]
             return
+
 
         def _select_opt_n():
 
@@ -266,14 +275,14 @@ class subtyping_model():
             data_noncn = data_noncn - self.trained_params['normalize'][2]
             data_noncn[data_noncn<0] = 0
 
-            subtypes, weight_subtypes = _core_subtype_predicting_module(data_noncn, n_subtypes, flag_randomize)
-            return subtypes, weight_subtypes, subtype_metrics
+            subtypes, weight_subtypes, subtype_with_outliers = _core_subtype_predicting_module(data_noncn, n_subtypes, flag_randomize)
+            return subtypes, weight_subtypes, subtype_metrics, subtype_with_outliers
         
         if self.n_optsubtypes is None:
             _select_opt_n()
         
         print('Estimating subtypes for N =', self.n_optsubtypes)
-        subtypes, weight_subtypes, subtype_metrics = _zscore_subtyping(data,diagnosis, self.n_optsubtypes)
+        subtypes, weight_subtypes, subtype_metrics, subtype_with_outliers = _zscore_subtyping(data,diagnosis, self.n_optsubtypes)
 
         # check if there is an outlier subtype
         #TODO: This causes an error if there are more than 1 outlier subtype
@@ -302,7 +311,21 @@ class subtyping_model():
         data_norm[data_norm<0] = 0
 
         weight_subtypes, _ = self.subtype_predicting_submodule(data_norm,False)
-        weight_subtypes = np.transpose(weight_subtypes)
-        subtypes = np.argmax(weight_subtypes,axis=1)
 
+        weight_subtypes = np.transpose(np.asarray(weight_subtypes))
+
+        #subtypes_with_outliers = np.argmax(weight_subtypes,axis=1)
+        #subtypes_with_outliers = subtypes.astype(float)
+
+        subtypes = np.argmax(weight_subtypes,axis=1)
+        subtypes = subtypes.astype(float)
+        outliers = np.zeros(subtypes.shape,dtype=bool)
+        for i in range(self.n_optsubtypes):
+                idx_this = subtypes == i
+                mcd = self.trained_params['Outlier_Detectors'][i]
+                if mcd is not None:
+                    mb = mcd.mahalanobis(weight_subtypes[idx_this,:])
+                    outliers[idx_this] = mb > self.trained_params['Outlier_threshold'][i]
+        subtypes[outliers] = np.nan
+        weight_subtypes[outliers,:] =np.nan
         return subtypes, weight_subtypes

@@ -251,6 +251,7 @@ class weighted_mallows:
         p_yes_padded = np.concatenate((np.zeros((p_yes.shape[0],1)),p_yes,np.ones((p_yes.shape[0],1))),axis=1)
         so_list,weights_list = Prob2ListAndWeights(p_yes_padded)
         num_events = p_yes.shape[1]
+        pi0 = [x+1 for x in pi0]
         pi0=np.insert(pi0.copy(),0,num_events+1)
         pi0=np.append(pi0.copy(),0)
         _,atypicality,atypicality_all = weighted_mallows.totalconsensus(pi0,so_list,weights_list)
