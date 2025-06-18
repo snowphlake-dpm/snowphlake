@@ -35,11 +35,19 @@ T = spl.timeline(estimate_uncertainty=False, estimate_subtypes = True,
 
 S, Sboot = T.estimate(data,diagnosis,biomarkers_selected)
 ```
+"n_nmfruns" should roughly be equal to $25 x n_{AD}$, where $n_{AD}$ is the number of patients with highest clinical stage (e.g. with AD dementia).
+
+If "estimate_subtypes" is False, the code estimates a progression timeline (without subtyping) using [DEBM](https://doi.org/10.1016/j.neuroimage.2018.11.024)
+
+If "n_cpucores" $>1$, subtyping is done using parallel processing.
+
 The input format for data, diagnosis, and biomarkers_selected are explained below:
 
-data: A NxM numpy matrix with no missing values. N = the number of patients in the training dataset. M = number of biomarkers for each patient. Each row must correspond to one timepoint for a patient. Please note that the method does not account for multiple timepoints per patient.
-diagnosis: N x 1 numpy matrix with no missing values. Each element in this array should be a string that correspond to one of the elements in the diagnostic\_labels variable defined above. diagnostic\_labels should in turn be mentioned in the order of increasing severity of clinical staging.
-biomarkers\_selected: A list of length M. Each element in the list should correspond to the name of the biomarker used, with no special characters.
+**data**: A $N x M$ numpy matrix with no missing values. $N$ = the number of patients in the training dataset. $M$ = number of biomarkers for each patient. Each row must correspond to one timepoint for a patient. Please note that the method does not account for multiple timepoints per patient.
+
+**diagnosis**: $N x 1$ numpy matrix with no missing values. Each element in this array should be a string that correspond to one of the elements in the "diagnostic\_labels" variable defined above. "diagnostic\_labels" should in turn be mentioned in the order of increasing severity of clinical staging.
+
+**biomarkers\_selected**: A list of length $M$. Each element in the list should correspond to the name of the biomarker used, with no special characters.
 
 T.sequence_model['ordering'] contains all the predicted orderings of biomarkers
 T.n_optsubtypes contains the optimum number of subtypes selected
