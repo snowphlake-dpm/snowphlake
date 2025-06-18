@@ -11,6 +11,8 @@ import sklearn.metrics as metrics
 import nimfa
 from sklearn.covariance import MinCovDet
 import scipy.stats 
+import multiprocessing as mp
+mp.set_start_method('spawn', force=True)
 
 class subtyping_model():
 
