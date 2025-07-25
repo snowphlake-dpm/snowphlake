@@ -3,9 +3,11 @@ This can be done by:
 conda create -c conda-forge --name snowphlake python=3.10 R=4.1
 
 ### Install necessary packages in R
+```
 conda init
 source activate snowphlake
 R
+```
 
 [1] Install Biobase in R:
 ```
