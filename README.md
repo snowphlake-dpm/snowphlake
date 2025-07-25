@@ -1,39 +1,37 @@
-# snowphlake
-Staging NeurOdegeneration With PHenotype informed progression timeLine of biomarKErs
+# Snowphlake - A tool for identifying disease subtypes and modeling disease progression
+Snowphlake stands for: Staging NeurOdegeneration With PHenotype informed progression timeLine of biomarKErs
 
-### Ensure both python and R are installed
-This can be done by:
-conda create -c conda-forge --name snowphlake python=3.10 R=4.1
+If you are using this work, please cite our paper: [A large-scale multi-centre study characterising atrophy heterogeneity in Alzheimer's disease](https://doi.org/10.1016/j.neuroimage.2025.121381)
 
-### Install necessary packages in R
-conda init
-source activate snowphlake
-R
+![Subtypes in AD](./img.jpg)
 
-[1] Install Biobase in R:
+## Installation Instructions
+
+Click [here](./installation_instructions.md) for installation instructions
+
+### A typical call on a toy dataset is shown here:
 ```
-if (!require("BiocManager", quietly = TRUE))
-    install.packages("BiocManager")
-BiocManager::install("Biobase")
-```
-[2] Install NMF and nnls in R:
-```
-install.packages('NMF')
-install.packages('nnls')
-```
-### After cloning this repository, install using pip install -e ./
-Check how to use pip within a conda environment: https://stackoverflow.com/a/43729857 
+import numpy as np
+import snowphlake as spl
+from snowphlake.load_dataset import load_dataset
+from sklearn.impute import SimpleImputer
 
-After installation, this should work: import snowphlake as spl
+data=load_dataset() #Toy dataset
+diagnosis=data['Diagnosis'].values
+data=data.drop(['Diagnosis','PTID','Age','Sex','ICV','EXAMDATE'],axis=1)
+#Remove the effects of the confounders before calling snowphlake. This is not done in the toy dataset
 
-### A typical call is shown here:
-```
-T = spl.timeline(estimate_uncertainty=False, estimate_subtypes = True,
-    subtyping_measure = 'zscore',\
-    diagnostic_labels=['CN', 'SCD', 'MCI', 'AD'], n_maxsubtypes=6,\
-    random_seed=100, n_nmfruns=50000, n_cpucores = 50)
+#Impute missing values if necessary.
+imp = SimpleImputer(missing_values=np.nan, strategy='mean')
+imp.fit(data.values)
+data_imputed=imp.transform(data.values)
+biomarkers_selected = list(data)
 
-S, Sboot = T.estimate(data,diagnosis,biomarkers_selected)
+T = spl.timeline(estimate_uncertainty=False, estimate_subtypes = True,\
+    diagnostic_labels=['CN', 'MCI', 'AD'], n_maxsubtypes=6, model_selection='full',\
+    random_seed=100, n_nmfruns=8550, n_cpucores = 1)
+
+S, Sboot = T.estimate(data_imputed,diagnosis,biomarkers_selected)
 ```
 "n_nmfruns" should roughly be equal to $25 x n_{AD}$, where $n_{AD}$ is the number of patients with highest clinical stage (e.g. with AD dementia).
 
