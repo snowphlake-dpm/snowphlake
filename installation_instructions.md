@@ -1,6 +1,6 @@
 ### Ensure both python and R are installed
 This can be done by:
-conda create -c conda-forge --name snowphlake python=3.10 R=4.1 ipython
+conda env create --name snowphlake -f https://raw.githubusercontent.com/snowphlake-dpm/snowphlake/main/environment.yml
 
 ### Install necessary packages in R
 ```
@@ -19,8 +19,9 @@ BiocManager::install("Biobase")
 ```
 install.packages('NMF')
 install.packages('nnls')
+q()
 ```
 ### Final step
 ```
-pip install git+https://github.com/snowphlake-dpm/snowphlake.git
+pip install --no-deps git+https://github.com/snowphlake-dpm/snowphlake.git
 ```
