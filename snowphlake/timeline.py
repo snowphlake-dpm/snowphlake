@@ -34,7 +34,12 @@ class timeline():
             self.bootstrap_repetitions = bootstrap_repetitions
         else:
             self.bootstrap_repetitions = 0
+
+        if n_optsubtypes==1:
+            estimate_subtypes=False
+
         self.estimate_subtypes = estimate_subtypes
+
         if self.estimate_subtypes == True:
             self.model_selection = model_selection # full, or None 
             self.n_splits = None

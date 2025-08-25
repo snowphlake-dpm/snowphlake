@@ -54,9 +54,11 @@ check_opt=np.abs(np.diff(T.subtyping_model.rss_data)) > np.max(np.abs(np.diff(T.
 Once you examine if the criteria used suits your application, you can compute the final measure as follows:
 ```
 nopt=T.n_optsubtypes # or change based on adjusted criterion
-Topt = spl.timeline(estimate_uncertainty=True, estimate_subtypes = True,\ 
+Topt = spl.timeline(estimate_uncertainty=True, estimate_subtypes = True,\
         diagnostic_labels=['CN','SCD','MCI','AD'], n_optsubtypes=nopt,\
         random_seed=100, n_nmfruns=500, n_cpucores = 8)
+Sopt, Sbootopt = Topt.estimate(data_imputed,diagnosis,biomarkers_selected)
+
 ```
 
 If "estimate_subtypes" is False, the code estimates a progression timeline (without subtyping) using [DEBM](https://doi.org/10.1016/j.neuroimage.2018.11.024)
