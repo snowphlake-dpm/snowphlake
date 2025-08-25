@@ -18,7 +18,7 @@ from sklearn.impute import SimpleImputer
 
 data=load_dataset() #Toy dataset
 diagnosis=data['Diagnosis'].values
-data=data.drop(['Diagnosis','PTID','Age','Sex','ICV','EXAMDATE'],axis=1)
+data=data.drop(['Diagnosis','PTID','Age','Sex','ICV','EXAMDATE','ABeta'],axis=1,errors='ignore')
 #Remove the effects of the confounders before calling snowphlake. This is not done in the toy dataset
 
 #Impute missing values if necessary.
@@ -28,8 +28,8 @@ data_imputed=imp.transform(data.values)
 biomarkers_selected = list(data)
 
 T = spl.timeline(estimate_uncertainty=False, estimate_subtypes = True,\
-    diagnostic_labels=['CN', 'MCI', 'AD'], n_maxsubtypes=6, model_selection='full',\
-    random_seed=100, n_nmfruns=8550, n_cpucores = 1)
+    diagnostic_labels=['CN','SCD','MCI','AD'], n_maxsubtypes=6, model_selection='full',\
+    random_seed=100, n_nmfruns=12500, n_cpucores = 8)
 
 S, Sboot = T.estimate(data_imputed,diagnosis,biomarkers_selected)
 ```
