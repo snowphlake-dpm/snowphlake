@@ -120,13 +120,15 @@ class subtyping_model():
                     mcd = MinCovDet(random_state=self.random_seed)
                     Coefs = np.asarray(Coefs)
                     Coefs_trans = np.transpose(Coefs)
-                    _ = mcd.fit(Coefs_trans[idx_this,:])
-                    mb = mcd.mahalanobis(Coefs_trans[idx_this,:])
-                    if self.outlier_percentile is not None:
-                        thresh = np.percentile(mb,self.outlier_percentile)
-                    else:
-                        thresh = np.median(mb) + (2*scipy.stats.iqr(mb))
-                    outliers[idx_this] = mb > thresh
+                    X_cluster = Coefs_trans[idx_this, :]
+                    if X_cluster.shape[0] > X_cluster.shape[1] or X_cluster.shape[0] > 5:
+                        _ = mcd.fit(Coefs_trans[idx_this,:])
+                        mb = mcd.mahalanobis(Coefs_trans[idx_this,:])
+                        if self.outlier_percentile is not None:
+                            thresh = np.percentile(mb,self.outlier_percentile)
+                        else:
+                            thresh = np.median(mb) + (2*scipy.stats.iqr(mb))
+                        outliers[idx_this] = mb > thresh
                 else:
                     mcd = None
                     thresh = None
