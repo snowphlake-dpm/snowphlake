@@ -41,9 +41,14 @@ Take a look at the residual matrices T.subtyping_model.rss_data and T.subtyping_
 ```
 print(np.diff(T.subtyping_model.rss_data))
 print(np.diff(T.subtyping_model.rss_random))
-np.abs(np.diff(T.subtyping_model.rss_data)) > np.abs(np.diff(T.subtyping_model.rss_random)) 
-# for the optimum subtyping solution. However, the implemented model chooses subtypes conservatively by:
-np.abs(np.diff(T.subtyping_model.rss_data)) > np.max(np.abs(np.diff(T.subtyping_model.rss_random)))
+check_opt=np.abs(np.diff(T.subtyping_model.rss_data)) > np.abs(np.diff(T.subtyping_model.rss_random)) 
+if any(check_opt):
+    nopt = max(i for i, val in enumerate(check_opt) if val) + 2
+else:
+    nopt = 1
+
+# However, the implemented model chooses subtypes conservatively by:
+check_opt=np.abs(np.diff(T.subtyping_model.rss_data)) > np.max(np.abs(np.diff(T.subtyping_model.rss_random)))
 ```
 
 Once you examine if the criteria used suits your application, you can compute the final measure as follows:
