@@ -33,7 +33,7 @@ T = spl.timeline(estimate_uncertainty=False, estimate_subtypes = True,\
 
 S, Sboot = T.estimate(data_imputed,diagnosis,biomarkers_selected)
 ```
-"n_nmfruns" should roughly be equal to $25 x n_{AD}$, where $n_{AD}$ is the number of patients with highest clinical stage (e.g. with AD dementia). However, for ease of testing in the toy dataset, n_nmfruns is set equal to $n_{AD}$ in the above example.
+"n_nmfruns" should roughly be equal to $25 \times n_{AD}$, where $n_{AD}$ is the number of patients with highest clinical stage (e.g. with AD dementia). However, for ease of testing in the toy dataset, n_nmfruns is set equal to $n_{AD}$ in the above example.
 
 The optimum number of subtypes is estimated automatically using one of the many criteria available in subtyping literature. 
 
@@ -67,9 +67,9 @@ If "n_cpucores" $>1$, subtyping is done using parallel processing.
 
 The input format for data, diagnosis, and biomarkers_selected are explained below:
 
-**data**: A $N x M$ numpy matrix with no missing values. $N$ = the number of patients in the training dataset. $M$ = number of biomarkers for each patient. Each row must correspond to one timepoint for a patient. Please note that the method does not account for multiple timepoints per patient.
+**data**: A $N \times M$ numpy matrix with no missing values. $N$ = the number of patients in the training dataset. $M$ = number of biomarkers for each patient. Each row must correspond to one timepoint for a patient. Please note that the method does not account for multiple timepoints per patient.
 
-**diagnosis**: $N x 1$ numpy matrix with no missing values. Each element in this array should be a string that correspond to one of the elements in the "diagnostic\_labels" variable defined above. "diagnostic\_labels" should in turn be mentioned in the order of increasing severity of clinical staging.
+**diagnosis**: $N \times 1$ numpy matrix with no missing values. Each element in this array should be a string that correspond to one of the elements in the "diagnostic\_labels" variable defined above. "diagnostic\_labels" should in turn be mentioned in the order of increasing severity of clinical staging.
 
 **biomarkers\_selected**: A list of length $M$. Each element in the list should correspond to the name of the biomarker used, with no special characters.
 
